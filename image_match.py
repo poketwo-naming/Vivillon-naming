@@ -743,6 +743,7 @@ class ImageMatcher:
         self.labels = None
         self.matcher = None
         self.exact_references: dict[str, str] = {}
+        self.corrected_references: dict[str, str] = {}
         if cv2 is None or not bank_path.is_file():
             return
         try:
@@ -795,12 +796,16 @@ class ImageMatcher:
 
         Spawns can face either way, so the picture is also tried mirrored.
         """
-        if not self.names or self.matcher is None:
-            return None
-        if self.exact_references:
-            exact = self.exact_references.get(hashlib.sha256(data).hexdigest())
+        if self.corrected_references or self.exact_references:
+            digest = hashlib.sha256(data).hexdigest()
+            corrected = self.corrected_references.get(digest)
+            if corrected is not None:
+                return corrected, 0
+            exact = self.exact_references.get(digest)
             if exact is not None:
                 return DISPLAY_NAMES.get(exact, exact), 0
+        if not self.names or self.matcher is None:
+            return None
         mask = self._transparency_mask(data)
         # SIFT is the expensive half, so each orientation is described once and
         # the relaxed retry reuses those descriptors instead of recomputing them.

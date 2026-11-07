@@ -16,6 +16,7 @@ starboard_settings.json
 starboard_settings.json.tmp
 .bank_cache/
 pokemon_images/archive/
+data/pokemon_corrections.csv
 boxes.json
 boxes.json.tmp
 appearance.json

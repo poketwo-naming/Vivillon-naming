@@ -129,6 +129,15 @@ calibrated probability. Real-spawn guesses at or below 50% are appended to
 `pokemon_confidence.csv` in the project root, creating it with a header if needed.
 Real spawns matching a name in that CSV are also saved to
 `pokemon_confidence_review/` for manual review.
+The bot owner can reply to a recognition alert with `v!correct <correct name>`
+(for example, `v!correct Zygarde Core`). The bot retrieves the original spawn
+image, records its SHA-256 hash, corrected name, previous guess and confidence
+in `data/pokemon_corrections.csv`, and immediately uses that name for identical
+image bytes, including after a restart. Correcting a different image does not
+change general matching, and resized or re-encoded copies are not exact matches.
+The original spawn and its image must still be accessible. To persist corrections
+in a container, set `POKEMON_CORRECTIONS_FILE=/data/pokemon_corrections.csv`
+with `/data` mounted on persistent storage.
 If recognition has no verified match, the bot reports
 when no guess is available, without posting an error reply in the spawn channel.
 If the vision model is unavailable, the bot names the best local reference

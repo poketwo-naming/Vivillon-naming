@@ -807,6 +807,149 @@ class PremiumAccessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.bot.active_vision_requests, 0)
 
 
+class ImageCorrectionTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.corrections = Path(self.directory.name) / "corrections.csv"
+        self.env = patch.dict(
+            "os.environ",
+            {
+                "POKEMON_CORRECTIONS_FILE": str(self.corrections),
+                "IMAGE_BANK_FILE": str(Path(self.directory.name) / "missing.npz"),
+            },
+        )
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.config = ConfigTests().load_config()
+        self.bot = NamingBot(self.config)
+        self.bot.application_owner_ids = {123}
+        self.bot._connection.user = Mock(id=555)
+        self.bot.image_http = Mock(close=AsyncMock())
+        self.bot.low_accuracy_channels = {}
+        self.source = Mock()
+        self.source.guild.id = 1
+        self.source.author.id = self.config.poketwo_bot_id
+        self.source.attachments = [
+            Mock(content_type="image/png", url="https://example.test/spawn.png")
+        ]
+        self.source.embeds = []
+        self.source_channel = Mock(spec=discord.TextChannel)
+        self.source_channel.fetch_message = AsyncMock(return_value=self.source)
+        self.bot.get_channel = Mock(return_value=self.source_channel)
+        self.alert = Mock()
+        self.alert.author.id = 555
+        self.alert.content = (
+            f"<@{bot_module.RECOGNITION_ALERT_USER_ID}> ⚠️ Low accuracy: "
+            "**Pikachu** at 25.00% (below 50%)\n"
+            "https://discord.com/channels/1/2/3"
+        )
+        self.message = Mock()
+        self.message.author.id = 123
+        self.message.author.bot = False
+        self.message.content = "v!correct Zygarde Core"
+        self.message.guild.id = SERVER_ID
+        self.message.channel.id = bot_module.RECOGNITION_ALERT_CHANNEL_ID
+        self.message.channel.fetch_message = AsyncMock(return_value=self.alert)
+        self.message.reference.message_id = 4
+        self.message.reply = AsyncMock()
+
+    async def asyncTearDown(self) -> None:
+        await self.bot.close()
+
+    async def test_reply_teaches_exact_image_and_survives_restart(self) -> None:
+        import hashlib
+
+        image = b"original spawn image"
+        digest = hashlib.sha256(image).hexdigest()
+        self.bot.image_matcher.exact_references[digest] = "Pikachu"
+        with patch("bot.download_image", new=AsyncMock(return_value=(image, "image/png"))):
+            await self.bot.on_message(self.message)
+            self.assertEqual(
+                await bot_module.recognize_pokemon(
+                    "https://example.test/spawn.png",
+                    client=None,
+                    http=Mock(),
+                    model="test",
+                    matcher=self.bot.image_matcher,
+                ),
+                ("Zygarde Core", 100.0),
+            )
+        self.assertIn("Saved **Zygarde Core**", self.message.reply.await_args.args[0])
+        self.assertIsNone(self.bot.image_matcher.match(b"another image"))
+        with self.corrections.open(encoding="utf-8", newline="") as file:
+            import csv
+
+            rows = list(csv.DictReader(file))
+        self.assertEqual(rows, [{
+            "image_sha256": digest,
+            "correct_name": "Zygarde Core",
+            "source_message_id": "3",
+            "previous_guess": "Pikachu",
+            "previous_confidence": "25.00",
+            "corrected_by": "123",
+            "alert_message_id": "4",
+        }])
+        restarted = NamingBot(self.config)
+        try:
+            self.assertEqual(restarted.image_matcher.match(image), ("Zygarde Core", 0))
+        finally:
+            await restarted.close()
+
+    async def test_non_owner_and_untrusted_alert_cannot_change_references(self) -> None:
+        self.message.author.id = 456
+        await self.bot.on_message(self.message)
+        self.assertIn("Only the bot owner", self.message.reply.await_args.args[0])
+        self.assertFalse(self.corrections.exists())
+        self.message.author.id = 123
+        self.alert.author.id = 999
+        await self.bot.on_message(self.message)
+        self.assertIn("alert sent by this bot", self.message.reply.await_args.args[0])
+        self.assertFalse(self.corrections.exists())
+
+    async def test_write_failure_does_not_teach_image(self) -> None:
+        with (
+            patch("bot.download_image", new=AsyncMock(return_value=(b"image", "image/png"))),
+            patch("bot.append_image_correction", side_effect=OSError("disk full")),
+        ):
+            await self.bot.on_message(self.message)
+        self.assertIn("couldn't save", self.message.reply.await_args.args[0])
+        self.assertIsNone(self.bot.image_matcher.match(b"image"))
+
+    async def test_failure_alert_can_be_corrected(self) -> None:
+        self.alert.content = (
+            f"<@{bot_module.RECOGNITION_ALERT_USER_ID}> Vivillon couldn't confidently identify "
+            "the spawn in <#2>.\nJump to the spawn: https://discord.com/channels/1/2/3"
+        )
+        with patch("bot.download_image", new=AsyncMock(return_value=(b"image", "image/png"))):
+            await self.bot.on_message(self.message)
+        self.assertEqual(self.bot.image_matcher.match(b"image"), ("Zygarde Core", 0))
+
+    async def test_form_names_and_latest_correction_are_preserved(self) -> None:
+        self.message.content = "v!correct D Unown"
+        with patch("bot.download_image", new=AsyncMock(return_value=(b"image", "image/png"))):
+            await self.bot.on_message(self.message)
+            self.assertEqual(self.bot.image_matcher.match(b"image"), ("Unown Variant 4", 0))
+            self.message.content = "v!correct Busted Mimikyu"
+            await self.bot.on_message(self.message)
+        self.assertEqual(self.bot.image_matcher.match(b"image"), ("Busted Mimikyu", 0))
+        restarted = NamingBot(self.config)
+        try:
+            self.assertEqual(restarted.image_matcher.match(b"image"), ("Busted Mimikyu", 0))
+        finally:
+            await restarted.close()
+
+    async def test_invalid_name_or_unavailable_spawn_is_not_saved(self) -> None:
+        self.message.content = "v!correct not a pokemon"
+        await self.bot.on_message(self.message)
+        self.assertIn("don't recognize", self.message.reply.await_args.args[0])
+        self.message.content = "v!correct Pikachu"
+        self.source.author.id = 42
+        await self.bot.on_message(self.message)
+        self.assertIn("couldn't save", self.message.reply.await_args.args[0])
+        self.assertFalse(self.corrections.exists())
+
+
 class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.config = ConfigTests().load_config()

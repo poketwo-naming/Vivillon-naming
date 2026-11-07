@@ -905,6 +905,42 @@ def image_url(message: discord.Message) -> str | None:
 
 LOW_ACCURACY_THRESHOLD = 50
 CORROBORATED_CONFIDENCE_FLOOR = 85.0
+CORRECTION_FIELDS = (
+    "image_sha256",
+    "correct_name",
+    "source_message_id",
+    "previous_guess",
+    "previous_confidence",
+    "corrected_by",
+    "alert_message_id",
+)
+
+
+def load_image_corrections(path: Path) -> dict[str, str]:
+    try:
+        with path.open("r", encoding="utf-8", newline="") as file:
+            reader = csv.DictReader(file)
+            if reader.fieldnames != list(CORRECTION_FIELDS):
+                raise ValueError(f"Invalid correction CSV header in {path}")
+            corrections: dict[str, str] = {}
+            for row in reader:
+                digest = row.get("image_sha256", "")
+                name = row.get("correct_name", "")
+                if not digest or not re.fullmatch(r"[0-9a-f]{64}", digest) or not name:
+                    raise ValueError(f"Invalid correction CSV row in {path}")
+                corrections[digest] = name
+            return corrections
+    except FileNotFoundError:
+        return {}
+
+
+def append_image_correction(path: Path, row: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=CORRECTION_FIELDS)
+        if file.tell() == 0:
+            writer.writeheader()
+        writer.writerow(row)
 
 
 def append_pokemon_confidence(path: Path, name: str, confidence: float) -> None:
@@ -1336,7 +1372,9 @@ async def recognize_pokemon(
     downloaded: tuple[bytes, str] | None = None
     download_seconds = 0.0
     match_seconds = 0.0
-    if matcher is not None and matcher.entries:
+    if matcher is not None and (
+        matcher.entries or matcher.exact_references or matcher.corrected_references
+    ):
         download_started = time.monotonic()
         downloaded = await download_image(http, url)
         download_seconds = time.monotonic() - download_started
@@ -7044,6 +7082,14 @@ class NamingBot(commands.Bot):
             if image_bank_file
             else Path(__file__).with_name("image_bank.npz")
         )
+        self.image_corrections_path = Path(
+            os.environ.get(
+                "POKEMON_CORRECTIONS_FILE", str(data_path("pokemon_corrections.csv"))
+            )
+        )
+        self.image_matcher.corrected_references.update(
+            load_image_corrections(self.image_corrections_path)
+        )
         self.handled_spawn_ids: dict[int, None] = {}
         self.handled_catch_ids: dict[int, None] = {}
         self.muted_poketwo_channels: set[int] = set()
@@ -8346,6 +8392,12 @@ class NamingBot(commands.Bot):
         # drop the org bot's own JSON requests, and before channel filtering.
         if self.org_rpc is not None and await self.org_rpc.handle_message(message):
             return
+        if (
+            not message.author.bot
+            and re.match(r"^v!correct(?:\s|$)", message.content, re.IGNORECASE)
+        ):
+            await self.handle_image_correction(message)
+            return
         if re.match(r"^v!(?:jsk|jishaku)(?:\s|$)", message.content, re.IGNORECASE):
             await self.process_commands(message)
             return
@@ -8625,6 +8677,115 @@ class NamingBot(commands.Bot):
                 owner_ids.add(application.team.owner_id)
             self.application_owner_ids = owner_ids
         return user_id in self.application_owner_ids
+
+    async def handle_image_correction(self, message: discord.Message) -> None:
+        try:
+            owner = await self.is_application_owner(message.author.id)
+        except discord.HTTPException:
+            logger.exception("Could not verify the bot owner for image correction")
+            await message.reply("I couldn't verify the bot owner. Check the logs.", mention_author=False)
+            return
+        if not owner:
+            await message.reply("Only the bot owner can correct images.", mention_author=False)
+            return
+        match = re.fullmatch(r"v!correct\s+(.+?)\s*", message.content, re.IGNORECASE)
+        if match is None or message.guild is None or message.reference is None:
+            await message.reply(
+                "Reply to a recognition alert with `v!correct <correct Pokémon name>`.",
+                mention_author=False,
+            )
+            return
+        channels = {RECOGNITION_ALERT_CHANNEL_ID, *self.low_accuracy_channels.values()}
+        if message.channel.id not in channels:
+            await message.reply("Use this command in a recognition alert channel.", mention_author=False)
+            return
+        lookup = known_name_lookup().copy()
+        lookup.update({normalize_pokemon_alias(name): name for name in self.image_matcher.entries})
+        lookup.update(
+            {normalize_pokemon_alias(display): form for form, display in FORM_DISPLAY_NAMES.items()}
+        )
+        name = lookup.get(normalize_pokemon_alias(canonicalize_pokemon_name(match.group(1))))
+        if name is None:
+            await message.reply("I don't recognize that Pokémon name. Check its spelling.", mention_author=False)
+            return
+        if name.islower():
+            name = name.title()
+        reference_id = message.reference.message_id
+        if reference_id is None:
+            await message.reply("I couldn't read the alert you replied to.", mention_author=False)
+            return
+        try:
+            alert = await message.channel.fetch_message(reference_id)
+        except discord.HTTPException:
+            logger.exception("Could not fetch recognition alert %s", reference_id)
+            await message.reply("I couldn't read the alert. Check my channel permissions.", mention_author=False)
+            return
+        if self.user is None or alert.author.id != self.user.id:
+            await message.reply("Please reply to an alert sent by this bot.", mention_author=False)
+            return
+        low_alert = re.fullmatch(
+            rf"<@{RECOGNITION_ALERT_USER_ID}> ⚠️ Low accuracy: "
+            r"\*\*(.+?)\*\* at (\d+(?:\.\d+)?)% \(below 50%\)\n"
+            r"https://discord\.com/channels/(\d+)/(\d+)/(\d+)",
+            alert.content,
+        )
+        failure_alert = re.fullmatch(
+            rf"<@{RECOGNITION_ALERT_USER_ID}> Vivillon couldn't confidently identify "
+            r"the spawn in <#\d+>\.\nJump to the spawn: "
+            r"https://discord\.com/channels/(\d+)/(\d+)/(\d+)",
+            alert.content,
+        )
+        if low_alert:
+            previous_guess, previous_confidence, guild_id, channel_id, spawn_id = low_alert.groups()
+        elif failure_alert:
+            guild_id, channel_id, spawn_id = failure_alert.groups()
+            previous_guess, previous_confidence = "", ""
+        else:
+            await message.reply("Please reply to a recognition alert from this bot.", mention_author=False)
+            return
+        try:
+            channel = self.get_channel(int(channel_id))
+            if channel is None:
+                channel = await self.fetch_channel(int(channel_id))
+            if not isinstance(channel, discord.abc.Messageable):
+                raise ValueError("Spawn channel cannot be read")
+            source = await channel.fetch_message(int(spawn_id))
+            if (
+                source.guild is None
+                or source.guild.id != int(guild_id)
+                or source.author.id != self.config.poketwo_bot_id
+            ):
+                raise ValueError("Alert does not point to a Pokétwo spawn")
+            url = image_url(source)
+            if url is None or self.image_http is None:
+                raise ValueError("Spawn image or HTTP client is unavailable")
+            image, _ = await download_image(self.image_http, url)
+            digest = hashlib.sha256(image).hexdigest()
+            append_image_correction(
+                self.image_corrections_path,
+                {
+                    "image_sha256": digest,
+                    "correct_name": name,
+                    "source_message_id": spawn_id,
+                    "previous_guess": previous_guess,
+                    "previous_confidence": previous_confidence,
+                    "corrected_by": str(message.author.id),
+                    "alert_message_id": str(reference_id),
+                },
+            )
+        except (discord.HTTPException, aiohttp.ClientError, asyncio.TimeoutError, OSError, ValueError):
+            logger.exception("Could not save image correction for alert %s", reference_id)
+            await message.reply(
+                "I couldn't save that correction. The original spawn or image may be unavailable; check the logs.",
+                mention_author=False,
+            )
+            return
+        self.image_matcher.corrected_references[digest] = name
+        await message.reply(
+            f"Saved **{display_pokemon_name(name)}** for this exact image. "
+            "Future identical images will use this name.",
+            mention_author=False,
+        )
 
     async def handle_premium_command(self, message: discord.Message) -> None:
         match = PREMIUM_COMMAND_PATTERN.fullmatch(message.content.strip())
