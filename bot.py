@@ -2174,8 +2174,14 @@ def custom_thumbnail_path(name: str) -> Path | None:
 def custom_starboard_thumbnail_path(
     details: "CatchDetails", category: str
 ) -> Path | None:
-    if category != "normal_pokemon" and not (category == "shiny" and details.shiny):
-        return None
+    del category
+    if details.shiny:
+        filename = re.sub(
+            r"[^a-z0-9]", "", normalize_pokemon_alias(details.pokemon)
+        ) + ".png"
+        shiny_path = THUMBNAIL_ASSETS_DIR / "shiny" / filename
+        if shiny_path.is_file():
+            return shiny_path
     return custom_thumbnail_path(details.pokemon)
 
 
@@ -2748,6 +2754,14 @@ def starboard_sprite_names(details: CatchDetails) -> tuple[str, str]:
     base_name = CUSTOM_FORM_SPECIES.get(base_name, base_name)
     sprite_ids = load_sprite_ids()
     if base_name not in sprite_ids:
+        slug = pokemon_sprite_slug(base_name)
+        base_name = next(
+            (name for name in sprite_ids if pokemon_sprite_slug(name) == slug),
+            base_name,
+        )
+    if details.gigantamax and base_name.casefold().endswith(" alcremie"):
+        base_name = "Alcremie"
+    if base_name not in sprite_ids:
         base_name = next(
             (
                 species_name
@@ -2782,6 +2796,14 @@ def starboard_art_url(
     )
 
     if use_3d_shiny_model and details.shiny:
+        animated_form_slugs = {
+            "Pau Oricorio": "oricorio-pau",
+            "Roaming Gimmighoul": "gimmighoul-roaming",
+        }
+        if base_name in animated_form_slugs:
+            return SHOWDOWN_ANIMATED_SHINY_SPRITE_URL.format(
+                animated_form_slugs[base_name]
+            )
         form_model_slug = SWSH_FORM_MODEL_SLUGS.get(base_name)
         if form_model_slug is not None:
             return (

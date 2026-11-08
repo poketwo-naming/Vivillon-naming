@@ -5068,6 +5068,63 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.bot.close()
 
+    def test_reported_form_thumbnails(self) -> None:
+        cases = (
+            ("Drive Mode Miraidon", False, False, "normal_pokemon",
+             "attachment://drivemodemiraidon.png"),
+            ("Statue Simipour", True, False, "shiny",
+             "attachment://statuesimipour.png"),
+            ("Gigantamax Vanilla Cream Berry Sweet Alcremie", False, True, "gigantamax",
+             "https://raw.githubusercontent.com/PokeAPI/sprites/master/"
+             "sprites/pokemon/other/home/10223.png"),
+            ("Smearguru", False, False, "high_iv", "attachment://smearguru.png"),
+            ("Elixir Reuniclus", False, False, "high_iv",
+             "attachment://elixirreuniclus.png"),
+            ("Elixir Reuniclus", True, False, "shiny",
+             "attachment://elixirreuniclus.png"),
+            ("Gigantamax Low Key Toxtricity", False, True, "gigantamax",
+             "https://raw.githubusercontent.com/PokeAPI/sprites/master/"
+             "sprites/pokemon/other/home/10228.png"),
+            ("Pa'u Oricorio", True, False, "shiny",
+             "https://raw.githubusercontent.com/PokeAPI/sprites/master/"
+             "sprites/pokemon/other/home/shiny/10124.png"),
+            ("Roaming Gimmighoul", True, False, "shiny",
+             "https://raw.githubusercontent.com/PokeAPI/sprites/master/"
+             "sprites/pokemon/other/home/shiny/10263.png"),
+        )
+        import bot
+
+        for name, shiny, gigantamax, category, expected in cases:
+            with self.subTest(name=name, shiny=shiny):
+                details = bot.CatchDetails(
+                    user_id=123, pokemon=name, level="22", iv="90.86%",
+                    iv_value=90.86, gender=None, shiny=shiny, chain=None,
+                    gigantamax=gigantamax, missingno=False,
+                )
+                embed = format_starboard_embed(details, category, discord.utils.utcnow())
+                self.assertEqual(embed.thumbnail.url, expected)
+                path = bot.custom_starboard_thumbnail_path(details, category)
+                if expected.startswith("attachment://"):
+                    self.assertIsNotNone(path)
+                    self.assertTrue(require_not_none(path).is_file())
+                    self.assertEqual(path.parent.name, "shiny" if shiny else "thumbnails")
+
+    def test_reported_shiny_form_animations_use_correct_forms(self) -> None:
+        import bot
+
+        for name, slug in (("Pa'u Oricorio", "oricorio-pau"),
+                           ("Roaming Gimmighoul", "gimmighoul-roaming")):
+            with self.subTest(name=name):
+                details = bot.CatchDetails(
+                    user_id=123, pokemon=name, level="22", iv="50%",
+                    iv_value=50, gender=None, shiny=True, chain=None,
+                    gigantamax=False, missingno=False,
+                )
+                self.assertEqual(
+                    starboard_art_url(details, use_3d_shiny_model=True),
+                    f"https://play.pokemonshowdown.com/sprites/ani-shiny/{slug}.gif",
+                )
+
     def test_plain_catch_strips_custom_emoji_and_parses_decimal_comma_iv(self) -> None:
         details = require_not_none(parse_catch_details(
             "Congratulations <@123>! You caught a Level 14 "

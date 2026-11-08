@@ -21,6 +21,10 @@ PREFIX_SUFFIXES = {
     "primal": "primal",
 }
 SPRITE_OVERRIDES = {
+    "Gmax Toxtricity": 10219,
+    "Low-Key Toxtricity": 10184,
+    "Pau Oricorio": 10124,
+    "Roaming Gimmighoul": 10263,
     "Zygarde": 10118,
 }
 
@@ -74,6 +78,7 @@ def main() -> None:
             print(f"No sprite for {name}")
         else:
             mapping[name] = sprite_id
+    mapping["Gmax Low-Key Toxtricity"] = pokemon["toxtricity-low-key-gmax"]
     (root / "data" / "pokemon_sprites.json").write_text(
         json.dumps(mapping, ensure_ascii=False, indent=0) + "\n", encoding="utf-8"
     )
