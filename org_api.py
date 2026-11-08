@@ -161,6 +161,7 @@ def create_app(
     categories: Callable[[], dict[str, dict[str, list[str]]]] | None = None,
     add_category_to_vivillon: Callable[[list[str], int], None] | None = None,
     clear_reserves_from_vivillon: Callable[[int], int] | None = None,
+    matches_all_forms: Callable[[str, str], bool] | None = None,
 ) -> web.Application:
     @web.middleware
     async def guard(request: web.Request, handler: Any) -> web.StreamResponse:
@@ -242,6 +243,28 @@ def create_app(
             name, all_forms = org.canonical_name(pokemon)
         stored = f"All {name}" if all_forms else name
         if action == "add":
+            for category_pokemon in current_categories().values():
+                for category_name in category_pokemon:
+                    category_key = fold(category_name)
+                    category_all_forms = category_key.startswith("all ")
+                    if category_all_forms:
+                        category_key = category_key[4:].strip()
+                    if (
+                        fold(name) == category_key
+                        or (
+                            matches_all_forms is not None
+                            and (
+                                (all_forms and matches_all_forms(category_key, name))
+                                or (
+                                    category_all_forms
+                                    and matches_all_forms(name, category_key)
+                                )
+                            )
+                        )
+                    ):
+                        raise OrgError(
+                            409, f"{stored} belongs to a category and cannot be individually reserved"
+                        )
             created = org.add(stored, user_id, slot)
             add_to_vivillon(stored, user_id)
             changed = created

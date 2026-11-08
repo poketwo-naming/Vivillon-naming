@@ -9265,6 +9265,121 @@ class OrgReservesTests(unittest.TestCase):
 
 
 class OrgApiValidationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_individual_add_rejects_live_category_members_without_saving(self) -> None:
+        from aiohttp.test_utils import TestClient, TestServer
+        from bot import pokemon_matches_all_forms_reservation
+        from org_api import OrgReserves, create_app, load_json
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            categories = {
+                "1": {
+                    "regional": ["Pikachu", "Heat Rotom"],
+                    "wildcard": ["All Eevee", "All Raichu"],
+                },
+                "2": {"other": ["Bulbasaur"]},
+            }
+            bot = SimpleNamespace(reservations={}, reserve_path=root / "native.json")
+            org = OrgReserves(
+                root / "org.json",
+                root / "restrictions.json",
+                [
+                    "Pikachu", "Rotom", "Heat Rotom", "Eevee", "Raichu",
+                    "Alolan Raichu", "Bulbasaur",
+                ],
+            )
+            app = create_app(
+                "test-api-key",
+                org,
+                1,
+                lambda name, user_id: NamingBot.org_add_reserve(
+                    cast(NamingBot, bot), name, user_id
+                ),
+                lambda name, user_id: NamingBot.org_remove_reserve(
+                    cast(NamingBot, bot), name, user_id
+                ),
+                lambda: categories,
+                matches_all_forms=pokemon_matches_all_forms_reservation,
+            )
+            headers = {"Authorization": "Bearer test-api-key"}
+            with patch.dict(bot_module.os.environ, {"ORG_GUILD_ID": "1"}):
+                async with TestClient(TestServer(app)) as client:
+                    for pokemon in (
+                        "pIkAcHu", "all Pikachu", "All Rotom", "Eevee",
+                        "Alolan Raichu", "All Alolan Raichu",
+                    ):
+                        with self.subTest(pokemon=pokemon):
+                            response = await client.post(
+                                "/api/org/reserves",
+                                json={
+                                    "action": "add",
+                                    "pokemon": pokemon,
+                                    "userId": "123",
+                                    "slot": "slot1",
+                                },
+                                headers=headers,
+                            )
+                            self.assertEqual(response.status, 409)
+                            result = await response.json()
+                            self.assertFalse(result["success"])
+                            self.assertIn("cannot be individually reserved", result["error"])
+                            self.assertEqual(org.entries, [])
+                            self.assertEqual(load_json(org.path, []), [])
+                            self.assertEqual(bot.reservations, {})
+                            self.assertEqual(load_reservations(bot.reserve_path), {})
+
+                    response = await client.post(
+                        "/api/org/reserves",
+                        json={
+                            "action": "add",
+                            "pokemon": "Bulbasaur",
+                            "userId": "123",
+                            "slot": "slot1",
+                        },
+                        headers=headers,
+                    )
+                    self.assertEqual(response.status, 200)
+                    self.assertTrue((await response.json())["success"])
+                    self.assertEqual(
+                        load_json(org.path, []),
+                        [{"pokemon": "Bulbasaur", "userId": "123", "slot": "slot1"}],
+                    )
+                    self.assertEqual(load_reservations(bot.reserve_path), {"1:bulbasaur": [123]})
+
+                    categories["1"]["regional"].append("Bulbasaur")
+                    response = await client.post(
+                        "/api/org/reserves",
+                        json={
+                            "action": "add",
+                            "pokemon": "Bulbasaur",
+                            "userId": "456",
+                            "slot": "slot2",
+                        },
+                        headers=headers,
+                    )
+                    self.assertEqual(response.status, 409)
+                    self.assertEqual(len(org.entries), 1)
+                    self.assertEqual(
+                        load_json(org.path, []),
+                        [{"pokemon": "Bulbasaur", "userId": "123", "slot": "slot1"}],
+                    )
+                    self.assertEqual(load_reservations(bot.reserve_path), {"1:bulbasaur": [123]})
+
+                    response = await client.post(
+                        "/api/org/reserves",
+                        json={
+                            "action": "remove",
+                            "pokemon": "Bulbasaur",
+                            "userId": "123",
+                            "slot": "slot1",
+                        },
+                        headers=headers,
+                    )
+                    self.assertEqual(response.status, 200)
+                    self.assertTrue((await response.json())["changed"])
+                    self.assertEqual(load_json(org.path, []), [])
+                    self.assertEqual(load_reservations(bot.reserve_path), {})
+
     async def test_validate_rpc_matches_org_reserves_for_every_slot(self) -> None:
         from aiohttp.test_utils import TestClient, TestServer
         from org_api import OrgError, OrgReserves, create_app

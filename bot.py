@@ -8154,6 +8154,7 @@ class NamingBot(commands.Bot):
             lambda: self.reserve_categories,
             self.org_add_category_reserves,
             self.org_clear_reserves,
+            matches_all_forms=pokemon_matches_all_forms_reservation,
         )
         port = _org_api_port_from_environment()
         if (
