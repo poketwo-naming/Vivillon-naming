@@ -5428,7 +5428,8 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertEqual(
                         gigantamax_embed.title,
-                        f"{bot_module.GIGANTAMAX_EMOJI} Gigantamax Capture {bot_module.GIGANTAMAX_EMOJI}",
+                        "<:gmax:1246699816440954950> Gigantamax Capture "
+                        "<:gmax:1246699816440954950>",
                     )
                     self.assertEqual(gigantamax_embed.fields, [])
                     self.assertIn(
