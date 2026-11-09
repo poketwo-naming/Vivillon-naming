@@ -12172,7 +12172,7 @@ class GrabAddReservesView(discord.ui.View):
             getattr(self.bot, "org_store", None),
         )
         conflicts = []
-        if org_store is not None:
+        if org_store is not None and not self.silent_h_mode:
             conflicts = [
                 name
                 for name, user_id in self.pairs
@@ -12185,19 +12185,20 @@ class GrabAddReservesView(discord.ui.View):
                 ephemeral=True,
             )
             return
-        updated = add_reservations_bulk(
-            self.bot.reservations, self.guild_id, self.pairs
-        )
-        try:
-            save_reservations(self.bot.reserve_path, updated)
-        except ValueError:
-            logger.exception("Could not save grabbed reservations")
-            await interaction.response.send_message(
-                "I couldn't save those reserves. Check the bot logs.",
-                ephemeral=True,
+        if not self.silent_h_mode:
+            updated = add_reservations_bulk(
+                self.bot.reservations, self.guild_id, self.pairs
             )
-            return
-        self.bot.reservations = updated
+            try:
+                save_reservations(self.bot.reserve_path, updated)
+            except ValueError:
+                logger.exception("Could not save grabbed reservations")
+                await interaction.response.send_message(
+                    "I couldn't save those reserves. Check the bot logs.",
+                    ephemeral=True,
+                )
+                return
+            self.bot.reservations = updated
         self.stop()
         await interaction.response.edit_message(content="Adding reserves...", view=None)
 
