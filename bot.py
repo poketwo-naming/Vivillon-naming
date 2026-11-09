@@ -2870,7 +2870,7 @@ def format_starboard_embed(
         "high_iv": "📈 High-IV Capture",
         "low_iv": "📉 Low-IV Capture",
         "missingno": "❔ MissingNo. Capture",
-        "gigantamax": f"{GIGANTAMAX_EMOJI} Gigantamax Capture {GIGANTAMAX_EMOJI}",
+        "gigantamax": "Gigantamax Capture",
         "normal_pokemon": "⭐ Pokémon Spotlight",
     }
     caught_by = details.trainer or (
@@ -2880,6 +2880,11 @@ def format_starboard_embed(
         f"**Caught by:** {caught_by}",
         f"**Pokémon:** {details.pokemon}",
     ]
+    if category == "gigantamax":
+        heading = f"{GIGANTAMAX_EMOJI} **Gigantamax Capture** {GIGANTAMAX_EMOJI}"
+        if test_preview:
+            heading = f"🧪 **TEST —** {heading}"
+        description_lines.insert(0, f"{heading}\n")
     if category in {"high_iv", "low_iv"}:
         description_lines.extend(
             (f"**IV:** {details.iv}", f"**Level:** {details.level}")
@@ -2896,9 +2901,9 @@ def format_starboard_embed(
 
     embed = discord.Embed(
         title=(
-            f"🧪 TEST — {titles[category]}"
-            if test_preview
-            else titles[category]
+            None
+            if category == "gigantamax"
+            else f"🧪 TEST — {titles[category]}" if test_preview else titles[category]
         ),
         description="\n".join(description_lines),
         color=discord.Color(DEFAULT_EMBED_COLOR),

@@ -5449,8 +5449,13 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertEqual(
                         gigantamax_embed.title,
-                        "<:gmax:1246699816440954950> Gigantamax Capture "
-                        "<:gmax:1246699816440954950>",
+                        None,
+                    )
+                    self.assertTrue(
+                        embed_description(gigantamax_embed).startswith(
+                            "<:gmax:1246699816440954950> **Gigantamax Capture** "
+                            "<:gmax:1246699816440954950>\n"
+                        )
                     )
                     self.assertEqual(gigantamax_embed.fields, [])
                     self.assertIn(
@@ -5458,6 +5463,20 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
                         embed_description(gigantamax_embed),
                     )
                     self.assertIn("**Level:** 30", embed_description(gigantamax_embed))
+                    preview = format_starboard_embed(
+                        details,
+                        expected_category,
+                        discord.utils.utcnow(),
+                        test_preview=True,
+                    )
+                    self.assertIsNone(preview.title)
+                    self.assertTrue(
+                        embed_description(preview).startswith(
+                            "🧪 **TEST —** <:gmax:1246699816440954950> "
+                            "**Gigantamax Capture** <:gmax:1246699816440954950>\n"
+                        )
+                    )
+                    self.assertIn("Test preview", preview.footer.text or "")
 
     def test_starboard_embed_has_requested_fields_timestamp_and_artwork(self) -> None:
         details = require_not_none(parse_catch_details(
@@ -6234,9 +6253,16 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
                     "📈 High-IV Capture",
                     "📉 Low-IV Capture",
                     "✨ Shiny Capture ✨",
-                    f"{bot_module.GIGANTAMAX_EMOJI} Gigantamax Capture {bot_module.GIGANTAMAX_EMOJI}",
+                    None,
                     "❔ MissingNo. Capture",
                 ],
+            )
+            gigantamax_embed = vivillon_channel.send.await_args_list[3].kwargs["embed"]
+            self.assertTrue(
+                embed_description(gigantamax_embed).startswith(
+                    f"{bot_module.GIGANTAMAX_EMOJI} **Gigantamax Capture** "
+                    f"{bot_module.GIGANTAMAX_EMOJI}\n"
+                )
             )
             shiny_channel.send.assert_awaited_once()
 
@@ -6381,9 +6407,13 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
 
             await self.bot.on_message(message)
 
-            self.assertEqual(
-                awaited_kwargs(main_channel.send)["embed"].title,
-                f"{bot_module.GIGANTAMAX_EMOJI} Gigantamax Capture {bot_module.GIGANTAMAX_EMOJI}",
+            main_embed = awaited_kwargs(main_channel.send)["embed"]
+            self.assertIsNone(main_embed.title)
+            self.assertTrue(
+                embed_description(main_embed).startswith(
+                    f"{bot_module.GIGANTAMAX_EMOJI} **Gigantamax Capture** "
+                    f"{bot_module.GIGANTAMAX_EMOJI}\n"
+                )
             )
             self.assertEqual(
                 awaited_kwargs(shiny_channel.send)["embed"].title,
