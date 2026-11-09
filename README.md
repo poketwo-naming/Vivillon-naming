@@ -217,7 +217,9 @@ Catch Detection System reports for configured regional forms and featured
 Pokémon, with the catcher, Pokémon, level, IV, thumbnail, and catch time. Shiny
 catches also post to the shinyboard. Catch Detection System shiny, high-IV,
 low-IV, MissingNo., and Gigantamax reports use the Vivillon Starboard, with
-shiny catches also posted to the shinyboard
+the Gigantamax emoji on both sides of Gigantamax capture titles. The bot needs
+access to that custom emoji and permission to use external emojis where needed.
+Shiny catches are also posted to the shinyboard
 when configured. Shiny posts include the catcher, Pokémon, level, IV, gender
 when Pokétwo provides it, and a chain only when the catch message identifies
 one. Normal Starboard Pokémon Spotlight embeds use the same static 2D artwork

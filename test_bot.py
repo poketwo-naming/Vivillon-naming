@@ -5426,6 +5426,10 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
                         expected_category,
                         discord.utils.utcnow(),
                     )
+                    self.assertEqual(
+                        gigantamax_embed.title,
+                        f"{bot_module.GIGANTAMAX_EMOJI} Gigantamax Capture {bot_module.GIGANTAMAX_EMOJI}",
+                    )
                     self.assertEqual(gigantamax_embed.fields, [])
                     self.assertIn(
                         f"**Pokémon:** {expected_name}",
@@ -6177,7 +6181,7 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
                     "📈 High-IV Capture",
                     "📉 Low-IV Capture",
                     "✨ Shiny Capture ✨",
-                    "🌟 Gigantamax Capture",
+                    f"{bot_module.GIGANTAMAX_EMOJI} Gigantamax Capture {bot_module.GIGANTAMAX_EMOJI}",
                     "❔ MissingNo. Capture",
                 ],
             )
@@ -6326,7 +6330,7 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(
                 awaited_kwargs(main_channel.send)["embed"].title,
-                "🌟 Gigantamax Capture",
+                f"{bot_module.GIGANTAMAX_EMOJI} Gigantamax Capture {bot_module.GIGANTAMAX_EMOJI}",
             )
             self.assertEqual(
                 awaited_kwargs(shiny_channel.send)["embed"].title,
