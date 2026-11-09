@@ -277,28 +277,60 @@ class PokeballDrops:
         if permissions is None or not permissions.manage_guild:
             await message.reply("You need Manage Server to configure Pokéball drops.", mention_author=False)
             return
-        match = re.fullmatch(r"v!drops\s+(add|remove)\s+(\d+)\s*|v!drops\s+(list)\s*", message.content, re.I)
+        match = re.fullmatch(
+            r"v!drops\s+(?:(?P<action>add|remove)\s+)?(?P<ids>\d+(?:\s+\d+)*)\s*"
+            r"|v!drops\s+(?P<listing>list)\s*",
+            message.content,
+            re.I,
+        )
         if not match:
-            await message.reply("Usage: `v!drops add <category id>`, `v!drops remove <category id>`, or `v!drops list`.", mention_author=False)
+            await message.reply(
+                "Usage: `v!drops [add] <category id> [more ids]`, "
+                "`v!drops remove <category id> [more ids]`, or `v!drops list`.",
+                mention_author=False,
+            )
             return
-        action, raw_id, listing = match.groups()
         categories = self.data["categories"].get(str(guild.id), [])
-        if listing:
+        if match.group("listing"):
             await message.reply("Drop categories: " + (", ".join(f"`{category}`" for category in categories) or "none"), mention_author=False)
             return
-        category_id = int(raw_id)
-        if action.lower() == "add" and not isinstance(guild.get_channel(category_id), discord.CategoryChannel):
-            await message.reply("That is not a category in this server.", mention_author=False)
-            return
+        action = (match.group("action") or "add").lower()
+        category_ids = list(dict.fromkeys(int(raw_id) for raw_id in match.group("ids").split()))
+        if action == "add":
+            invalid = [
+                category_id for category_id in category_ids
+                if not isinstance(guild.get_channel(category_id), discord.CategoryChannel)
+            ]
+            if invalid:
+                await message.reply(
+                    "These IDs are not categories in this server: "
+                    + ", ".join(f"`{category_id}`" for category_id in invalid)
+                    + ". No categories were added.",
+                    mention_author=False,
+                )
+                return
         data = copy.deepcopy(self.data)
         categories = data["categories"].setdefault(str(guild.id), [])
-        if action.lower() == "add" and category_id not in categories:
-            categories.append(category_id)
-        elif action.lower() == "remove" and category_id in categories:
-            categories.remove(category_id)
+        changed = []
+        unchanged = []
+        for category_id in category_ids:
+            if action == "add" and category_id not in categories:
+                categories.append(category_id)
+                changed.append(category_id)
+            elif action == "remove" and category_id in categories:
+                categories.remove(category_id)
+                changed.append(category_id)
+            else:
+                unchanged.append(category_id)
         self.save(data)
-        verb = "added" if action.lower() == "add" else "removed"
-        await message.reply(f"Drop category `{category_id}` {verb}.", mention_author=False)
+        parts = []
+        if changed:
+            verb = "Added" if action == "add" else "Removed"
+            parts.append(f"{verb}: " + ", ".join(f"`{category_id}`" for category_id in changed) + ".")
+        if unchanged:
+            status = "Already added" if action == "add" else "Not configured"
+            parts.append(f"{status}: " + ", ".join(f"`{category_id}`" for category_id in unchanged) + ".")
+        await message.reply(" ".join(parts), mention_author=False)
 
     async def dye_inventory(self, message: discord.Message) -> None:
         user = self.data["users"].get(str(message.author.id), {})

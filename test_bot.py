@@ -1729,7 +1729,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(
                 self.bot.naming_settings_for_guild(SERVER_ID),
-                {"enabled": True, "assisted": True},
+                {"enabled": True, "assisted": True, "only_pings": False},
             )
             updated = self.bot.toggle_naming_setting(SERVER_ID, "enabled")
             self.assertFalse(updated["enabled"])
@@ -1741,7 +1741,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(
                 load_server_settings(self.bot.server_settings_path)[str(SERVER_ID)],
-                {"enabled": False, "assisted": False},
+                {"enabled": False, "assisted": False, "only_pings": False},
             )
             self.bot.server_settings_path.write_text(
                 f'{{"{SERVER_ID}":{{"enabled":true,"assisted":false,"pings":true}}}}',
@@ -1749,8 +1749,12 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(
                 load_server_settings(self.bot.server_settings_path)[str(SERVER_ID)],
-                {"enabled": True, "assisted": False},
+                {"enabled": True, "assisted": False, "only_pings": False},
             )
+            updated = self.bot.toggle_naming_setting(SERVER_ID, "only_pings")
+            self.assertTrue(updated["only_pings"])
+            self.assertFalse(self.bot.naming_settings_for_guild(SERVER_ID + 1)["only_pings"])
+            self.assertTrue(load_server_settings(self.bot.server_settings_path)[str(SERVER_ID)]["only_pings"])
 
     async def test_naming_settings_button_requires_permission_and_saves(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1804,6 +1808,16 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
                 if isinstance(child, discord.ui.Section)
             ]
             self.assertEqual(runtime_attribute(runtime_attribute(updated_sections[1], "accessory"), "label"), "Name only")
+            pings_button = updated_sections[2].accessory
+            await pings_button.callback(interaction)
+            self.assertTrue(self.bot.naming_settings_for_guild(SERVER_ID)["only_pings"])
+            updated_view = awaited_kwargs(interaction.response.edit_message)["view"]
+            updated_sections = [
+                child
+                for child in runtime_attribute(updated_view.children[0], "children")
+                if isinstance(child, discord.ui.Section)
+            ]
+            self.assertEqual(updated_sections[2].accessory.label, "On")
 
     async def test_naming_settings_button_accepts_configured_role(self) -> None:
         role_id = 900
@@ -1860,7 +1874,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         self.bot.server_settings[str(SERVER_ID)] = {
             "enabled": True,
             "assisted": False,
-            "pings": True,
+            "only_pings": True,
         }
         unpinged_message = spawn_message(702)
         with patch(
@@ -1868,9 +1882,8 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
             new=AsyncMock(return_value=("Pikachu", 99.0)),
         ) as recognize:
             await self.bot.handle_spawn(unpinged_message)
-        unpinged_message.reply.assert_awaited_once()
+        unpinged_message.reply.assert_not_awaited()
         recognize.assert_awaited_once()
-        self.assertIn("Pikachu", unpinged_message.reply.await_args.args[0])
 
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -1890,9 +1903,9 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("<@123>", content)
         self.assertIn("Pikachu", content)
         self.assertNotIn("c pikachu", content)
-        self.assertIsNone(awaited_kwargs(pinged_message.reply)["embed"])
+        self.assertIsNone(awaited_kwargs(pinged_message.reply).get("embed"))
 
-        self.bot.server_settings[str(SERVER_ID)]["pings"] = False
+        self.bot.server_settings[str(SERVER_ID)]["only_pings"] = False
         name_only_message = spawn_message(704)
         with patch(
             "bot.recognize_pokemon",
@@ -1904,7 +1917,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Charizard", name_only_content)
         self.assertNotIn("Copy Here", name_only_content)
         self.assertNotIn("c charizard", name_only_content)
-        self.assertIsNone(awaited_kwargs(name_only_message.reply)["embed"])
+        self.assertIsNone(awaited_kwargs(name_only_message.reply).get("embed"))
 
     async def test_unmatched_spawn_reports_failure_instead_of_silently_skipping(
         self,
@@ -1913,6 +1926,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         self.bot.server_settings[str(SERVER_ID)] = {
             "enabled": True,
             "assisted": False,
+            "only_pings": True,
         }
         message = Mock()
         message.id = 710
@@ -1963,6 +1977,67 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(allowed_mentions.everyone)
         self.assertEqual(self.bot.failed_recognition_count, 1)
 
+    async def test_only_pings_matches_reserves_hunts_collections_and_types(self) -> None:
+        self.bot.image_http = Mock(close=AsyncMock())
+        self.bot.server_settings[str(SERVER_ID)] = {
+            "enabled": True, "assisted": False, "only_pings": True,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.bot.shinyhunt_path = root / "hunts.json"
+            self.bot.collection_path = root / "collections.json"
+            self.bot.type_ping_path = root / "types.json"
+            for index, kind in enumerate(("reserve", "shinyhunt", "collection", "type")):
+                with self.subTest(kind=kind):
+                    self.bot.reservations = (
+                        {reservation_key(SERVER_ID, "Pikachu"): [123]}
+                        if kind == "reserve" else {}
+                    )
+                    hunts = {reservation_key(SERVER_ID, "Pikachu"): [123]} if kind == "shinyhunt" else {}
+                    collections = {reservation_key(SERVER_ID, "Pikachu"): [123]} if kind == "collection" else {}
+                    types = {f"{SERVER_ID}:123": ["electric"]} if kind == "type" else {}
+                    save_reservations(self.bot.shinyhunt_path, hunts)
+                    save_reservations(self.bot.collection_path, collections)
+                    save_type_pings(self.bot.type_ping_path, types)
+                    message = Mock()
+                    message.id = 800 + index
+                    message.guild.id = SERVER_ID
+                    message.channel.id = 1200 + index
+                    message.attachments = [
+                        Mock(content_type="image/png", url="https://example.test/spawn.png")
+                    ]
+                    message.embeds = []
+                    message.reply = AsyncMock()
+                    with patch("bot.recognize_pokemon", new=AsyncMock(return_value=("Pikachu", 99.0))):
+                        await self.bot.handle_spawn(message)
+                    message.reply.assert_awaited_once()
+                    self.assertIn("<@123>", message.reply.await_args.args[0])
+
+    async def test_only_pings_keeps_test_and_missingno_safety_replies(self) -> None:
+        self.bot.image_http = Mock(close=AsyncMock())
+        self.bot.server_settings[str(SERVER_ID)] = {
+            "enabled": True, "assisted": False, "only_pings": True,
+        }
+        for index, (name, test_mode) in enumerate((("Pikachu", True), ("Missingno", False))):
+            with self.subTest(name=name):
+                message = Mock()
+                message.id = 820 + index
+                message.guild.id = SERVER_ID
+                message.channel.id = 1220 + index
+                message.attachments = [
+                    Mock(content_type="image/png", url="https://example.test/spawn.png")
+                ]
+                message.embeds = []
+                message.reply = AsyncMock()
+                with (
+                    patch("bot.recognize_pokemon", new=AsyncMock(return_value=(name, 99.0))),
+                    patch.object(self.bot, "set_poketwo_blocked", new=AsyncMock(return_value=True)),
+                ):
+                    await self.bot.handle_spawn(message, test_mode=test_mode)
+                message.reply.assert_awaited_once()
+                if not test_mode:
+                    self.assertIn("staff", message.reply.await_args.args[0])
+
     async def test_afk_preferences_filter_shinyhunt_and_collection_pings(self) -> None:
         self.bot.image_http = Mock(close=AsyncMock())
         self.bot.server_settings[str(SERVER_ID)] = {
@@ -2002,7 +2077,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Collection: <@456>", content)
         self.assertNotIn("Shinyhunt:", content)
 
-        self.bot.server_settings[str(SERVER_ID)]["pings"] = True
+        self.bot.server_settings[str(SERVER_ID)]["only_pings"] = True
         self.bot.afk_settings[f"{SERVER_ID}:456"]["collection"] = False
         muted_message = Mock()
         muted_message.id = 706
@@ -2020,10 +2095,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         ):
             await self.bot.handle_spawn(muted_message)
 
-        muted_message.reply.assert_awaited_once()
-        muted_content = muted_message.reply.await_args.args[0]
-        self.assertIn("Absol", muted_content)
-        self.assertNotIn("<@456>", muted_content)
+        muted_message.reply.assert_not_awaited()
 
     async def test_spawns_reload_saved_collection_and_shinyhunt_clear_state(self) -> None:
         self.bot.image_http = Mock(close=AsyncMock())
@@ -5019,6 +5091,7 @@ class TypePingTests(unittest.IsolatedAsyncioTestCase):
         self.bot.server_settings[str(SERVER_ID)] = {
             "enabled": True,
             "assisted": False,
+            "only_pings": True,
         }
         with tempfile.TemporaryDirectory() as directory:
             self.bot.type_ping_path = Path(directory) / "type_pings.json"

@@ -160,9 +160,31 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         await self.drops.configure(message)
         loaded = PokeballDrops(self.bot, self.drops.path, self.drops.catalog_path, save_profile_inventory)
         self.assertEqual(loaded.data["categories"]["7"], [9])
-        message.content = "v!drops remove 9"
+        message.content = "v!drops 10 11 10"
         await self.drops.configure(message)
-        self.assertEqual(self.drops.data["categories"]["7"], [])
+        message.content = "v!drops add 12"
+        await self.drops.configure(message)
+        loaded = PokeballDrops(self.bot, self.drops.path, self.drops.catalog_path, save_profile_inventory)
+        self.assertEqual(loaded.data["categories"]["7"], [9, 10, 11, 12])
+        message.content = "v!drops list"
+        await self.drops.configure(message)
+        self.assertIn("`11`", message.reply.await_args.args[0])
+        message.content = "v!drops remove 9 10"
+        await self.drops.configure(message)
+        self.assertEqual(self.drops.data["categories"]["7"], [11, 12])
+
+    async def test_invalid_category_rejects_entire_batch(self) -> None:
+        message = Mock()
+        message.guild.id = 7
+        message.guild.get_channel.side_effect = lambda category_id: (
+            Mock(spec=discord.CategoryChannel) if category_id == 9 else None
+        )
+        message.author.guild_permissions.manage_guild = True
+        message.content = "v!drops 9 10"
+        message.reply = AsyncMock()
+        await self.drops.configure(message)
+        self.assertNotIn("7", self.drops.data["categories"])
+        self.assertIn("`10`", message.reply.await_args.args[0])
 
     async def test_inventory_pages_are_accessible(self) -> None:
         dyes = [{"code": f"{i:07X}", "name": "Pink", "type": "frame", "rarity": "normal", "color": "#FF88CC"} for i in range(11)]

@@ -182,10 +182,15 @@ This application does not bypass those restrictions.
 
 Use `v!settings` to configure naming separately for each server. Members with
 Manage Server permission can turn naming on or off, disable Assisted mode to
-remove catch-command copy messages while keeping Pokémon names. Naming attempts
-are independent of whether anyone has registered to receive a ping. Settings are
-saved to `server_settings.json` by default; set `SERVER_SETTINGS_FILE` to use
-another path.
+remove catch-command copy messages while keeping Pokémon names, or enable
+**Only Pings** under **Naming**. Only Pings is off by default. When enabled,
+ordinary spawn replies are sent only if a reserve, shiny hunt, collection, or
+type ping matches; personal AFK settings still apply. The bot still recognizes
+spawns and reports recognition problems, and Missingno's safety warning still
+appears. Test commands continue to show their normal output. Older `pings`
+settings remain ignored, so servers must explicitly turn Only Pings on.
+Settings are saved to `server_settings.json` by default; set
+`SERVER_SETTINGS_FILE` to use another path.
 
 Manage Server members can use `v!permission <role id>` to grant that server role
 access to `v!grab`, `v!test`, reserve and category commands, `v!settings`,
@@ -462,9 +467,12 @@ The optional `currency` field defaults to `Pokédollar`. `PROFILE_SHOP_FILE` and
 
 ### Incense Pokéball drops and dyes
 
-Members with Manage Server can enable drops in every text channel within a
-category using `v!drops add <category id>`. Use `v!drops remove <category id>`
-to remove it and `v!drops list` to see configured IDs. Enable Discord
+Members with Manage Server can enable drops in every text channel within
+multiple categories. Use `v!drops <category id>`, `v!drops add <category id>`,
+or put several space-separated IDs in one command, such as
+`v!drops 123456789 987654321`. Repeated commands add to the existing list.
+Use `v!drops remove <category id> [more ids]` to remove categories and
+`v!drops list` to see configured IDs. Enable Discord
 Developer Mode to copy a category's ID. The bot needs View Channel, Send
 Messages, Embed Links and Attach Files in the chosen channels.
 

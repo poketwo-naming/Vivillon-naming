@@ -5261,6 +5261,17 @@ class NamingSettingsView(discord.ui.LayoutView):
                     bot, guild_id, "assisted", settings["assisted"]
                 ),
             ),
+            discord.ui.Section(
+                discord.ui.TextDisplay(
+                    "### Only Pings\n"
+                    f"{'🟢 On' if settings['only_pings'] else '🔴 Off'}\n"
+                    "Only send ordinary naming replies when a reserve, shiny hunt, "
+                    "collection, or type ping matches."
+                ),
+                accessory=NamingSettingToggleButton(
+                    bot, guild_id, "only_pings", settings["only_pings"]
+                ),
+            ),
             discord.ui.Separator(),
             discord.ui.Section(
                 discord.ui.TextDisplay("↩️ Back to the Control Panel."),
@@ -5705,6 +5716,7 @@ def save_reserve_categories(
 SERVER_NAMING_DEFAULTS: Final[dict[str, bool]] = {
     "enabled": True,
     "assisted": True,
+    "only_pings": False,
 }
 SERVER_NAMING_SETTING_KEYS: Final[frozenset[str]] = frozenset(
     SERVER_NAMING_DEFAULTS
@@ -11833,6 +11845,13 @@ class NamingBot(commands.Bot):
             assisted = True
         else:
             if not naming_settings["enabled"]:
+                return
+            if naming_settings["only_pings"] and not (
+                reserved_user_ids
+                or shinyhunter_user_ids
+                or collection_user_ids
+                or type_ping_user_ids
+            ):
                 return
             assisted = naming_settings["assisted"]
 
