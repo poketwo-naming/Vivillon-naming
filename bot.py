@@ -8375,7 +8375,6 @@ class NamingBot(commands.Bot):
         task.cancel()
         await message.reply(
             "Timer stopped. Use `v!settime` with roles to start again.",
-            files=profile_shop_currency_files(),
             mention_author=False,
         )
 
