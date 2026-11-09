@@ -2287,7 +2287,9 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         message.reply.reset_mock()
         await self.bot.on_message(message)
 
-        self.bot.handle_grab_command.assert_awaited_once_with(message)
+        self.bot.handle_grab_command.assert_awaited_once_with(
+            message, silent_h_mode=False
+        )
         message.reply.assert_not_awaited()
 
     async def test_grab_requires_premium(self) -> None:

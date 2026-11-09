@@ -118,27 +118,113 @@ HELP_CATEGORIES: Final[list[tuple[str, list[tuple[str, str]]]]] = [
 ]
 
 
-def build_help_menu_embed() -> discord.Embed:
-    embed = discord.Embed(
-        title="📖 Vivillon Command List",
-        description="Everything the bot can do, grouped by purpose. Names in `<>` are required, `[]` optional.",
-        color=discord.Color.from_rgb(0x9B, 0x8C, 0xE8),
-    )
+PAGE_CHAR_BUDGET: Final[int] = 3000
+MAX_FIELDS_PER_PAGE: Final[int] = 25
+
+
+def _category_fields(title: str, commands: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    chunks: list[list[str]] = [[]]
+    length = 0
+    for usage, text in commands:
+        entry = f"`{usage}`\n-# {text}"
+        if chunks[-1] and length + len(entry) + 1 > FIELD_VALUE_LIMIT:
+            chunks.append([])
+            length = 0
+        chunks[-1].append(entry)
+        length += len(entry) + 1
+    return [
+        (title if index == 0 else f"{title} (cont.)", "\n".join(chunk))
+        for index, chunk in enumerate(chunks)
+    ]
+
+
+def build_help_menu_embeds() -> list[discord.Embed]:
+    """Split the categories across as many pages as needed to stay within limits."""
+    pages: list[list[tuple[str, str]]] = [[]]
+    size = 0
     for title, commands in HELP_CATEGORIES:
-        chunks: list[list[str]] = [[]]
-        length = 0
-        for usage, text in commands:
-            entry = f"`{usage}`\n-# {text}"
-            if chunks[-1] and length + len(entry) + 1 > FIELD_VALUE_LIMIT:
-                chunks.append([])
-                length = 0
-            chunks[-1].append(entry)
-            length += len(entry) + 1
-        for index, chunk in enumerate(chunks):
-            embed.add_field(
-                name=title if index == 0 else f"{title} (cont.)",
-                value="\n".join(chunk),
-                inline=False,
+        fields = _category_fields(title, commands)
+        field_size = sum(len(name) + len(value) for name, value in fields)
+        if pages[-1] and (
+            size + field_size > PAGE_CHAR_BUDGET
+            or len(pages[-1]) + len(fields) > MAX_FIELDS_PER_PAGE
+        ):
+            pages.append([])
+            size = 0
+        pages[-1].extend(fields)
+        size += field_size
+
+    embeds: list[discord.Embed] = []
+    for number, fields in enumerate(pages, start=1):
+        embed = discord.Embed(
+            title="📖 Vivillon Command List",
+            description=(
+                "Everything the bot can do, grouped by purpose. "
+                "Names in `<>` are required, `[]` optional."
+            ),
+            color=discord.Color.from_rgb(0x9B, 0x8C, 0xE8),
+        )
+        for name, value in fields:
+            embed.add_field(name=name, value=value, inline=False)
+        embed.set_footer(
+            text=f"Page {number}/{len(pages)} • Tip: v!boxhelp explains every box command in detail."
+        )
+        embeds.append(embed)
+    return embeds
+
+
+def build_help_menu_embed() -> discord.Embed:
+    return build_help_menu_embeds()[0]
+
+
+class HelpMenuView(discord.ui.View):
+    """Previous/next buttons that flip through the help pages."""
+
+    def __init__(self, embeds: list[discord.Embed], author_id: int) -> None:
+        super().__init__(timeout=180)
+        self.embeds = embeds
+        self.author_id = author_id
+        self.index = 0
+        self.message: discord.Message | None = None
+        self._sync_buttons()
+
+    def _sync_buttons(self) -> None:
+        self.previous_page.disabled = self.index <= 0
+        self.next_page.disabled = self.index >= len(self.embeds) - 1
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "Run `v!help` yourself to flip through the pages.", ephemeral=True
             )
-    embed.set_footer(text="Tip: v!boxhelp explains every box command in detail.")
-    return embed
+            return False
+        return True
+
+    async def _show(self, interaction: discord.Interaction) -> None:
+        self._sync_buttons()
+        await interaction.response.edit_message(
+            embed=self.embeds[self.index], view=self
+        )
+
+    @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary)
+    async def previous_page(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        self.index = max(0, self.index - 1)
+        await self._show(interaction)
+
+    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.primary)
+    async def next_page(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        self.index = min(len(self.embeds) - 1, self.index + 1)
+        await self._show(interaction)
+
+    async def on_timeout(self) -> None:
+        for child in self.children:
+            child.disabled = True  # type: ignore[attr-defined]
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass

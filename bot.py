@@ -44,7 +44,7 @@ import org_rpc
 import pg_store
 from data_paths import data_path
 from daycare import DaycareFeature
-from help_menu import HELP_COMMAND_PATTERN, build_help_menu_embed
+from help_menu import HELP_COMMAND_PATTERN, HelpMenuView, build_help_menu_embeds
 from pokeball_drops import PokeballDrops
 from openai import AsyncOpenAI, BadRequestError, OpenAIError
 from openai.types.chat import (
@@ -1179,7 +1179,7 @@ def is_image_test_command(content: str) -> bool:
 
 def command_permission_group(content: str) -> str | None:
     content = content.strip()
-    if re.fullmatch(r"v!grab", content, re.IGNORECASE):
+    if re.fullmatch(r"[vh]!grab", content, re.IGNORECASE):
         return "general"
     if is_image_test_command(content):
         return "general"
@@ -8620,7 +8620,7 @@ class NamingBot(commands.Bot):
             if (
                 message.guild is not None
                 and self.commands_locked_for_guild(message.guild.id)
-                and re.match(r"^\s*v!", message.content, re.IGNORECASE)
+                and re.match(r"^\s*(?:v!|h!grab\s*$)", message.content, re.IGNORECASE)
             ):
                 await message.reply(
                     "Commands are currently disabled for this server.",
@@ -8742,9 +8742,18 @@ class NamingBot(commands.Bot):
                 return
             if re.fullmatch(HELP_COMMAND_PATTERN, message.content, re.IGNORECASE):
                 try:
-                    await message.reply(
-                        embed=build_help_menu_embed(), mention_author=False
-                    )
+                    help_embeds = build_help_menu_embeds()
+                    if len(help_embeds) > 1:
+                        help_view = HelpMenuView(help_embeds, message.author.id)
+                        help_view.message = await message.reply(
+                            embed=help_embeds[0],
+                            view=help_view,
+                            mention_author=False,
+                        )
+                    else:
+                        await message.reply(
+                            embed=help_embeds[0], mention_author=False
+                        )
                 except discord.Forbidden:
                     await message.reply(
                         "I need the Embed Links permission in this channel to "
@@ -8760,8 +8769,11 @@ class NamingBot(commands.Bot):
             if re.fullmatch(r"v!timereset\s*", message.content, re.IGNORECASE):
                 await self.handle_timereset_command(message)
                 return
-            if re.fullmatch(r"v!grab\s*", message.content, re.IGNORECASE):
-                await self.handle_grab_command(message)
+            grab_match = re.fullmatch(r"([vh])!grab\s*", message.content, re.IGNORECASE)
+            if grab_match:
+                await self.handle_grab_command(
+                    message, silent_h_mode=grab_match.group(1).lower() == "h"
+                )
                 return
             if re.fullmatch(r"v!ping\s*", message.content, re.IGNORECASE):
                 await self.handle_ping_command(message)
@@ -10235,8 +10247,11 @@ class NamingBot(commands.Bot):
                 self.pokeball_drops.record_spawn(after)
             await self.handle_spawn(after)
 
-    async def handle_grab_command(self, message: discord.Message) -> None:
-        usage = "Reply to a Pokémon list (like a `v!r search` result) with `v!grab`."
+    async def handle_grab_command(
+        self, message: discord.Message, silent_h_mode: bool = False
+    ) -> None:
+        prefix = "h!" if silent_h_mode else "v!"
+        usage = f"Reply to a Pokémon list (like a `v!r search` result) with `{prefix}grab`."
         if message.guild is None or message.reference is None:
             await message.reply(usage, mention_author=False)
             return
@@ -10264,7 +10279,13 @@ class NamingBot(commands.Bot):
         if not entries:
             await message.reply(usage, mention_author=False)
             return
-        view = GrabListView(self, message.guild.id, message.author.id, entries)
+        view = GrabListView(
+            self,
+            message.guild.id,
+            message.author.id,
+            entries,
+            silent_h_mode=silent_h_mode,
+        )
         response = await message.reply(
             embeds=view.current_embeds(),
             view=view,
@@ -12124,8 +12145,10 @@ class GrabAddReservesView(discord.ui.View):
         guild_id: int,
         requester_id: int,
         pairs: list[tuple[str, int]],
+        silent_h_mode: bool = False,
     ) -> None:
         super().__init__(timeout=180)
+        self.silent_h_mode = silent_h_mode
         self.bot = bot
         self.guild_id = guild_id
         self.requester_id = requester_id
@@ -12192,6 +12215,12 @@ class GrabAddReservesView(discord.ui.View):
         no_pings = discord.AllowedMentions.none()
         try:
             for name, user_id in self.pairs:
+                if self.silent_h_mode:
+                    await channel.send(
+                        f"h!r add {name} <@{user_id}>", allowed_mentions=no_pings
+                    )
+                    await asyncio.sleep(0.5)
+                    continue
                 await channel.send(
                     f"v!r add {name} <@{user_id}>", allowed_mentions=no_pings
                 )
@@ -12223,8 +12252,10 @@ class GrabListView(discord.ui.View):
         guild_id: int,
         requester_id: int,
         entries: list[tuple[str, list[int]]],
+        silent_h_mode: bool = False,
     ) -> None:
         super().__init__(timeout=600)
+        self.silent_h_mode = silent_h_mode
         self.bot = bot
         self.guild_id = guild_id
         self.requester_id = requester_id
@@ -12351,7 +12382,11 @@ class GrabListView(discord.ui.View):
                 color=discord.Color.blurple(),
             ),
             view=GrabAddReservesView(
-                self.bot, self.guild_id, interaction.user.id, pairs
+                self.bot,
+                self.guild_id,
+                interaction.user.id,
+                pairs,
+                silent_h_mode=self.silent_h_mode,
             ),
             allowed_mentions=discord.AllowedMentions.none(),
         )
