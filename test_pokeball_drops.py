@@ -127,6 +127,7 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
                 view = PokeballView(self.drops)
                 view.message = Mock()
                 view.message.delete = AsyncMock()
+                view.message.edit = AsyncMock()
                 view.claimed = claimed
                 with (
                     patch("pokeball_drops.time", SimpleNamespace(monotonic=lambda: 100.0)),
@@ -136,7 +137,15 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
                     task = next(iter(self.drops.expiry_tasks))
                     await task
                 sleep.assert_awaited_once_with(10)
-                view.message.delete.assert_awaited_once()
+                view.message.delete.assert_not_awaited()
+                kwargs = view.message.edit.await_args.kwargs
+                self.assertIs(kwargs["view"], view)
+                self.assertTrue(view.open_ball.disabled)
+                if claimed:
+                    self.assertNotIn("content", kwargs)
+                else:
+                    self.assertEqual(kwargs["content"], "This Pokéball expired.")
+                self.assertNotIn("attachments", kwargs)
 
     async def test_claim_rejected_at_expiry_without_reward(self) -> None:
         view = PokeballView(self.drops)
@@ -280,6 +289,7 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         message.jump_url = "https://discord.com/channels/7/8/99"
         message.created_at = discord.utils.utcnow()
         message.delete = AsyncMock()
+        message.edit = AsyncMock()
         self.drops.data["log_channels"]["7"] = 55
         await self.drops.log_drop(guild, channel, message)
         args = log_channel.send.await_args
@@ -294,7 +304,9 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
             patch("pokeball_drops.asyncio.sleep", new=AsyncMock()),
         ):
             await view.expire()
-        message.delete.assert_awaited_once()
+        message.delete.assert_not_awaited()
+        message.edit.assert_awaited_once_with(content="This Pokéball expired.", view=view)
+        self.assertTrue(view.open_ball.disabled)
         log_channel.send.assert_awaited_once()
 
     async def test_missing_log_channel_and_send_failure_are_logged(self) -> None:

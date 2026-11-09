@@ -520,14 +520,20 @@ class PokeballView(discord.ui.View):
             raise RuntimeError("Pokéball expiry was not started")
         await asyncio.sleep(max(0, self.deadline - time.monotonic()))
         async with self.claim_lock:
-            self.stop()
+            for item in self.children:
+                if isinstance(item, discord.ui.Button):
+                    item.disabled = True
             if self.message is not None:
                 try:
-                    await self.message.delete()
+                    if self.claimed:
+                        await self.message.edit(view=self)
+                    else:
+                        await self.message.edit(content="This Pokéball expired.", view=self)
                 except discord.NotFound:
                     pass
                 except discord.HTTPException:
-                    logger.warning("Could not delete expired Pokéball message", exc_info=True)
+                    logger.warning("Could not disable expired Pokéball button", exc_info=True)
+            self.stop()
 
     @discord.ui.button(label="Open Pokéball", style=discord.ButtonStyle.primary)
     async def open_ball(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
