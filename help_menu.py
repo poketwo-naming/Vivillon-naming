@@ -87,6 +87,7 @@ HELP_CATEGORIES: Final[list[tuple[str, list[tuple[str, str]]]]] = [
             ("v!buy <asset name or code>", "Confirm a purchase and equip the profile asset."),
             ("v!inv", "View your Pokédollar balance and owned profile assets."),
             ("v!drops [add/remove] <category ids> / v!drops list", "Manage Server: add or remove one or more category IDs for incense Pokéball drops."),
+            ("v!droplog #channel / off", "Manage Server: configure or disable the Pokéball drop log."),
             ("v!dyeinv", "View your normal and radiant dyes."),
             ("v!dye <dye code> <asset code>", "Apply a matching dye to an owned frame or background."),
             ("v!equip <asset code>", "Equip a specific copy of a profile asset."),

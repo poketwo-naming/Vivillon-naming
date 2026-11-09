@@ -8662,6 +8662,13 @@ class NamingBot(commands.Bot):
             if PROFILE_COMMAND_PATTERN.fullmatch(message.content):
                 await self.handle_profile_command(message)
                 return
+            if re.match(r"^v!droplog(?:\s|$)", message.content, re.IGNORECASE):
+                try:
+                    await self.pokeball_drops.configure_log(message)
+                except ValueError:
+                    logger.exception("Could not save Pokéball log settings")
+                    await message.reply("I couldn't save the drop log settings. Check the bot logs.", mention_author=False)
+                return
             if re.match(r"^v!drops(?:\s|$)", message.content, re.IGNORECASE):
                 try:
                     await self.pokeball_drops.configure(message)

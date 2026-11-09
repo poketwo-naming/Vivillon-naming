@@ -83,11 +83,19 @@ class PokeballDrops:
         self.data = read_json(path, {"categories": {}, "users": {}})
         if (
             not isinstance(self.data, dict)
-            or set(self.data) != {"categories", "users"}
+            or set(self.data) not in ({"categories", "users"}, {"categories", "users", "log_channels"})
             or not isinstance(self.data["categories"], dict)
             or not isinstance(self.data["users"], dict)
+            or not isinstance(self.data.get("log_channels", {}), dict)
         ):
             raise ValueError(f"Invalid Pokéball data in {path}")
+        self.data.setdefault("log_channels", {})
+        for guild_id, channel_id in self.data["log_channels"].items():
+            if (
+                not isinstance(guild_id, str) or not guild_id.isdecimal()
+                or not isinstance(channel_id, int) or isinstance(channel_id, bool) or channel_id <= 0
+            ):
+                raise ValueError(f"Invalid Pokéball log channel in {path}")
         for guild_id, categories in self.data["categories"].items():
             if not isinstance(guild_id, str) or not guild_id.isdecimal() or not isinstance(categories, list) or any(
                 not isinstance(category, int) or isinstance(category, bool) or category <= 0 for category in categories
@@ -194,8 +202,71 @@ class PokeballDrops:
                     view.start_expiry()
                 except (discord.HTTPException, OSError):
                     logger.exception("Could not send Pokéball drop in channel %s", channel.id)
+                    continue
+                await self.log_drop(guild, channel, view.message)
         finally:
             self.tasks.pop(guild_id, None)
+
+    async def log_drop(
+        self, guild: discord.Guild, channel: discord.TextChannel, message: discord.Message
+    ) -> None:
+        channel_id = self.data["log_channels"].get(str(guild.id))
+        if channel_id is None:
+            return
+        log_channel = guild.get_channel(channel_id)
+        if not isinstance(log_channel, discord.TextChannel):
+            logger.warning("Pokéball log channel %s not found in guild %s", channel_id, guild.id)
+            return
+        view = discord.ui.View(timeout=None)
+        view.add_item(discord.ui.Button(
+            label="Jump to drop", emoji="🔗", style=discord.ButtonStyle.link,
+            url=message.jump_url,
+        ))
+        try:
+            await log_channel.send(
+                f"Pokéball dropped in {channel.mention} {discord.utils.format_dt(message.created_at, 'F')}.",
+                view=view,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        except discord.HTTPException:
+            logger.exception("Could not send Pokéball drop log to channel %s", channel_id)
+
+    async def configure_log(self, message: discord.Message) -> None:
+        guild = message.guild
+        if guild is None:
+            await message.reply("Use this command in a server.", mention_author=False)
+            return
+        permissions = getattr(message.author, "guild_permissions", None)
+        if permissions is None or not permissions.manage_guild:
+            await message.reply("You need Manage Server to configure Pokéball logs.", mention_author=False)
+            return
+        match = re.fullmatch(r"v!droplog\s+(off|<#\d+>|\d+)\s*", message.content, re.I)
+        if match is None:
+            await message.reply("Usage: `v!droplog #channel`, `v!droplog <channel id>`, or `v!droplog off`.", mention_author=False)
+            return
+        target = match.group(1)
+        data = copy.deepcopy(self.data)
+        if target.lower() == "off":
+            data["log_channels"].pop(str(guild.id), None)
+            self.save(data)
+            await message.reply("Pokéball drop logging is off.", mention_author=False)
+            return
+        channel_id = int(target[2:-1] if target.startswith("<#") else target)
+        channel = guild.get_channel(channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            await message.reply("Choose a text channel in this server.", mention_author=False)
+            return
+        bot_member = guild.me
+        if bot_member is None:
+            await message.reply("I couldn't check my permissions in that channel.", mention_author=False)
+            return
+        bot_permissions = channel.permissions_for(bot_member)
+        if not bot_permissions.view_channel or not bot_permissions.send_messages:
+            await message.reply("I need View Channel and Send Messages in that channel.", mention_author=False)
+            return
+        data["log_channels"][str(guild.id)] = channel_id
+        self.save(data)
+        await message.reply(f"Pokéball drops will be logged in {channel.mention}.", mention_author=False)
 
     def close(self) -> None:
         for task in self.tasks.values():

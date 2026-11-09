@@ -158,8 +158,15 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         guild.me = Mock()
         channel = Mock()
         channel.id = 8
+        channel.mention = "<#8>"
         channel.category_id = 9
-        channel.send = AsyncMock(return_value=Mock())
+        drop = Mock()
+        drop.jump_url = "https://discord.com/channels/7/8/99"
+        drop.created_at = discord.utils.utcnow()
+        channel.send = AsyncMock(return_value=drop)
+        log_channel = Mock(spec=discord.TextChannel)
+        log_channel.send = AsyncMock()
+        guild.get_channel.return_value = log_channel
         permissions = channel.permissions_for.return_value
         permissions.view_channel = True
         permissions.send_messages = True
@@ -168,6 +175,7 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         guild.text_channels = [channel]
         self.bot.get_guild.return_value = guild
         self.drops.data["categories"]["7"] = [9]
+        self.drops.data["log_channels"]["7"] = 55
         self.drops.last_spawn[7] = time.monotonic()
         with patch("pokeball_drops.asyncio.sleep", new=AsyncMock(side_effect=[None, asyncio.CancelledError])) as sleep:
             with self.assertRaises(asyncio.CancelledError):
@@ -175,6 +183,8 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sleep.await_args_list[0].args, (180,))
         channel.send.assert_awaited_once()
         self.assertIsInstance(channel.send.await_args.kwargs["view"], PokeballView)
+        log_channel.send.assert_awaited_once()
+        self.assertEqual(log_channel.send.await_args.kwargs["view"].children[0].url, drop.jump_url)
 
     async def test_invalid_radiant_background_rejected(self) -> None:
         (self.root / "dyes.json").write_text(json.dumps({"dyes": [
@@ -221,6 +231,92 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         await self.drops.configure(message)
         self.assertNotIn("7", self.drops.data["categories"])
         self.assertIn("`10`", message.reply.await_args.args[0])
+
+    async def test_configure_drop_log_validates_and_persists_per_server(self) -> None:
+        message = Mock()
+        message.guild.id = 7
+        message.author.guild_permissions.manage_guild = False
+        message.reply = AsyncMock()
+        log_channel = Mock(spec=discord.TextChannel)
+        log_channel.id = 55
+        log_channel.mention = "<#55>"
+        log_channel.permissions_for.return_value.view_channel = True
+        log_channel.permissions_for.return_value.send_messages = True
+        message.guild.get_channel.return_value = log_channel
+        message.content = "v!droplog <#55>"
+        await self.drops.configure_log(message)
+        self.assertEqual(self.drops.data["log_channels"], {})
+        message.author.guild_permissions.manage_guild = True
+        message.guild.get_channel.return_value = None
+        await self.drops.configure_log(message)
+        self.assertIn("text channel", message.reply.await_args.args[0])
+        self.assertEqual(self.drops.data["log_channels"], {})
+        message.guild.get_channel.return_value = log_channel
+        log_channel.permissions_for.return_value.send_messages = False
+        await self.drops.configure_log(message)
+        self.assertIn("Send Messages", message.reply.await_args.args[0])
+        self.assertEqual(self.drops.data["log_channels"], {})
+        log_channel.permissions_for.return_value.send_messages = True
+        await self.drops.configure_log(message)
+        loaded = PokeballDrops(self.bot, self.drops.path, self.drops.catalog_path, save_profile_inventory)
+        self.assertEqual(loaded.data["log_channels"], {"7": 55})
+        message.guild.id = 8
+        message.content = "v!droplog 55"
+        await self.drops.configure_log(message)
+        message.guild.id = 7
+        message.content = "v!droplog off"
+        await self.drops.configure_log(message)
+        self.assertEqual(self.drops.data["log_channels"], {"8": 55})
+
+    async def test_drop_logs_use_exact_message_link_and_remain_after_expiry(self) -> None:
+        guild = Mock()
+        guild.id = 7
+        channel = Mock()
+        channel.mention = "<#8>"
+        log_channel = Mock(spec=discord.TextChannel)
+        log_channel.send = AsyncMock()
+        guild.get_channel.return_value = log_channel
+        message = Mock()
+        message.jump_url = "https://discord.com/channels/7/8/99"
+        message.created_at = discord.utils.utcnow()
+        message.delete = AsyncMock()
+        self.drops.data["log_channels"]["7"] = 55
+        await self.drops.log_drop(guild, channel, message)
+        args = log_channel.send.await_args
+        self.assertIn("<#8>", args.args[0])
+        self.assertIn(f"<t:{int(message.created_at.timestamp())}:F>", args.args[0])
+        self.assertEqual(args.kwargs["view"].children[0].url, message.jump_url)
+        view = PokeballView(self.drops)
+        view.message = message
+        view.deadline = 100
+        with (
+            patch("pokeball_drops.time", SimpleNamespace(monotonic=lambda: 110)),
+            patch("pokeball_drops.asyncio.sleep", new=AsyncMock()),
+        ):
+            await view.expire()
+        message.delete.assert_awaited_once()
+        log_channel.send.assert_awaited_once()
+
+    async def test_missing_log_channel_and_send_failure_are_logged(self) -> None:
+        guild = Mock()
+        guild.id = 7
+        channel = Mock()
+        message = Mock()
+        self.drops.data["log_channels"]["7"] = 55
+        guild.get_channel.return_value = None
+        with self.assertLogs("vivillon_naming", level="WARNING") as logged:
+            await self.drops.log_drop(guild, channel, message)
+        self.assertIn("not found", logged.output[0])
+        log_channel = Mock(spec=discord.TextChannel)
+        response = Mock(status=403, reason="Forbidden")
+        log_channel.send = AsyncMock(side_effect=discord.Forbidden(response, "No permission"))
+        guild.get_channel.return_value = log_channel
+        channel.mention = "<#8>"
+        message.jump_url = "https://discord.com/channels/7/8/99"
+        message.created_at = discord.utils.utcnow()
+        with self.assertLogs("vivillon_naming", level="ERROR") as logged:
+            await self.drops.log_drop(guild, channel, message)
+        self.assertIn("Could not send", logged.output[0])
 
     async def test_inventory_pages_are_accessible(self) -> None:
         dyes = [{"code": f"{i:07X}", "name": "Pink", "type": "frame", "rarity": "normal", "color": "#FF88CC"} for i in range(11)]

@@ -2314,6 +2314,23 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         self.bot.handle_grab_command.assert_not_awaited()
         self.assertIn("premium", message.reply.await_args.args[0])
 
+    async def test_droplog_command_routes_to_drop_log_configuration(self) -> None:
+        message = Mock()
+        message.author.bot = False
+        message.author.id = 123
+        message.guild.id = SERVER_ID
+        message.channel.guild.id = SERVER_ID
+        message.content = "v!droplog <#12345>"
+        message.embeds = []
+        message.attachments = []
+        message.reply = AsyncMock()
+        self.bot.pokeball_drops.configure_log = AsyncMock()
+
+        await self.bot.on_message(message)
+
+        self.bot.pokeball_drops.configure_log.assert_awaited_once_with(message)
+        message.reply.assert_not_awaited()
+
     async def test_settings_command_sends_server_settings_layout(self) -> None:
         message = Mock()
         message.author.bot = False

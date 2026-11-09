@@ -487,6 +487,15 @@ the drop message disappears ten seconds after it is posted, whether claimed or
 not. A restart ends existing balls and starts a new timer after the next
 incense spawn.
 
+Use `v!droplog #channel` or `v!droplog <channel id>` to select a text channel
+for permanent drop logs, and `v!droplog off` to disable them. Manage Server
+permission is required, and the bot needs View Channel and Send Messages in the
+log channel. Each log records the drop channel and time, with a **Jump to drop**
+button pointing to the exact message. The log remains, but the jump link only
+works until the drop message is deleted after ten seconds. Anyone viewing the
+log can see the drop channel; make sure the log channel's permissions are
+appropriate.
+
 Each claim normally awards either 0–500 XP or 0–1,000 Pokédollars, with equal
 chance and an inclusive, uniformly random amount. Zero gets an unlucky message.
 Levels are global across servers and start at 0: level 1 needs 500 XP, then
