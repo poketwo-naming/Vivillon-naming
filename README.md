@@ -75,6 +75,7 @@ docker volume create vivillon-data
 docker build -t vivillon-naming .
 docker run -d --name vivillon-naming --restart unless-stopped \
   --env-file .env \
+  -e DATA_DIR=/data \
   -e PROFILE_DATA_FILE=/data/profile_data.json \
   -e PREMIUM_SERVERS_FILE=/data/premium_servers.json \
   -e STARBOARD_SETTINGS_FILE=/data/starboard_settings.json \
@@ -86,7 +87,9 @@ docker run -d --name vivillon-naming --restart unless-stopped \
 Create `.env` with `DISCORD_TOKEN` and `POKETWO_BOT_ID`; `OPENAI_API_KEY` is
 optional. Keep this file private and out of GitHub. The Docker image runs
 `python bot.py`. The named volume preserves profile and board settings when
-you recreate the container.
+you recreate the container. If upgrading an older container that kept other
+JSON files under `/app/data`, copy those files into the volume before replacing
+it; setting `DATA_DIR=/data` does not migrate them automatically.
 
 This container is a persistent Discord Gateway bot, not an HTTP service.
 Cloud Run services require an HTTP listener, so this Dockerfile alone does not
@@ -435,8 +438,8 @@ to the profile, equipped immediately, and shown by `v!inv`. Existing equipped
 visual assets are migrated into their owners' inventories; profile music is not
 an inventory item. The inventory and shop catalog are stored separately in
 `profile_inventory.json` and `profile_shop.json` by default. The inventory file
-is private runtime data and is ignored by Git. Balances start at zero Pokédollar;
-currency earning is not part of this feature yet. An asset can be purchased any
+is private runtime data and is ignored by Git. Balances start at zero Pokédollar.
+An asset can be purchased any
 number of times. Every purchase charges its price and adds a separate inventory
 line with its own seven-character code, even when the asset is already owned.
 
@@ -456,6 +459,56 @@ owned copy gets a separate unique code shown in `v!inv`.
 
 The optional `currency` field defaults to `Pokédollar`. `PROFILE_SHOP_FILE` and
 `PROFILE_INVENTORY_FILE` can override the default data paths.
+
+### Incense Pokéball drops and dyes
+
+Members with Manage Server can enable drops in every text channel within a
+category using `v!drops add <category id>`. Use `v!drops remove <category id>`
+to remove it and `v!drops list` to see configured IDs. Enable Discord
+Developer Mode to copy a category's ID. The bot needs View Channel, Send
+Messages, Embed Links and Attach Files in the chosen channels.
+
+When Pokétwo posts a spawn in a tracked, unpaused incense channel, a five-minute
+timer starts for that server. While those spawns continue, one small Pokéball
+appears every five minutes in a random accessible text channel in the
+configured categories. The first person to press its button gets the reward;
+unclaimed balls expire after five minutes. A restart ends existing balls and
+starts a new timer after the next incense spawn.
+
+Each claim normally awards either 0–500 XP or 0–1,000 Pokédollars, with equal
+chance and an inclusive, uniformly random amount. Zero gets an unlucky message.
+Levels are global across servers and start at 0: level 1 needs 500 XP, then
+each following level costs 100 more XP than the previous one. The profile card
+shows the member's Discord avatar, display name, and level.
+
+Claims have a 1/1,000 chance of a normal dye and a separate, exclusive
+1/7,500 chance of a radiant frame dye instead of XP or money. The bot does not
+award a rarity until that rarity has definitions in the dye catalog; a roll for
+an unavailable rarity instead awards XP or money. `v!dyeinv` lists dye codes,
+rarity and asset type. `v!dye <dye code> <asset code>` consumes a matching dye
+and applies it to that owned copy; radiant dyes only work on frames. Use
+`v!equip <asset code>` to wear a specific copy, including an undyed duplicate.
+Background dye adds a color filter; radiant frame dye also adds a glow.
+
+No dyes are supplied by default. To add them later, create `data/dyes.json`
+(or set `DYE_CATALOG_FILE`) with entries like:
+
+```json
+{
+  "dyes": [
+    {"name": "Pink", "type": "background", "rarity": "normal", "color": "#FF88CC"},
+    {"name": "Gold", "type": "frame", "rarity": "radiant", "color": "#FFD700"}
+  ]
+}
+```
+
+Each name must be unique; `type` is `frame` or `background`, `rarity` is
+`normal` or `radiant`, and `color` is a six-digit hex color. If a rarity has
+multiple entries, each is equally likely within that rarity. Edits to the
+catalog are picked up on the next claim. Existing dyes retain their original
+properties. Categories, XP, owned dyes and applied dye colors are saved in
+`data/pokeball_drops.json` (or `POKEBALL_DATA_FILE`). Keep it and
+`profile_inventory.json` on persistent storage.
 
 ## Exchanging reservations
 

@@ -2387,6 +2387,12 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
             self.bot.profile_inventory_path,
             self.bot.profiles,
         )
+        self.bot.pokeball_drops = bot_module.PokeballDrops(
+            self.bot,
+            Path(self.directory.name) / "pokeball_drops.json",
+            Path(self.directory.name) / "dyes.json",
+            bot_module.save_profile_inventory,
+        )
 
     async def asyncTearDown(self) -> None:
         await self.bot.close()
@@ -2535,6 +2541,18 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
             self.bot.profile_inventory["123"]["balances"][bot_module.PROFILE_SHOP_CURRENCY],
             120,
         )
+        first_code = self.bot.profile_inventory["123"]["assets"][0]["code"]
+        self.bot.pokeball_drops.data["users"]["123"] = {
+            "xp": 0,
+            "dyes": [],
+            "applied": {
+                first_code: {
+                    "code": "1234567", "name": "Pink", "type": "frame",
+                    "rarity": "normal", "color": "#FF88CC",
+                }
+            },
+            "selected": {"frame": first_code},
+        }
 
         await self.bot.handle_profile_buy_command(message)
         purchase_view = awaited_kwargs(message.reply)["view"]
@@ -2555,6 +2573,14 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
             [("frame", "mystic"), ("frame", "mystic")],
         )
         self.assertEqual(len({asset["code"] for asset in owned_copies}), 2)
+        self.assertEqual(
+            self.bot.pokeball_drops.data["users"]["123"]["selected"]["frame"],
+            owned_copies[1]["code"],
+        )
+        self.assertNotIn(
+            "frame",
+            self.bot.pokeball_drops.appearance(123, self.bot.profile_settings_for_user(123)),
+        )
         self.assertTrue(all(len(asset["code"]) == 7 for asset in owned_copies))
         inventory_view = bot_module.ProfileInventoryView(self.bot, 123)
         inventory_lines = (inventory_view.embed.description or "").splitlines()
@@ -2626,6 +2652,8 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         message.author.bot = False
         message.author.id = 123
         message.author.display_name = "Trainer"
+        message.guild.get_member.return_value = message.author
+        message.author.display_avatar.read = AsyncMock(return_value=bot_module.PROFILE_SHOP_CURRENCY_ICON.read_bytes())
         message.channel.guild.id = SERVER_ID
         message.guild.id = SERVER_ID
         message.content = "v!profile"
@@ -2649,6 +2677,8 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         message.author.id = 123
         message.channel.guild.id = SERVER_ID
         message.guild.id = SERVER_ID
+        message.guild.get_member.return_value.display_name = "Target"
+        message.guild.get_member.return_value.display_avatar.read = AsyncMock(return_value=bot_module.PROFILE_SHOP_CURRENCY_ICON.read_bytes())
         message.content = "v!profile <@!456>"
         message.embeds = []
         message.attachments = []
@@ -2676,6 +2706,8 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         message.author.id = 123
         message.channel.guild.id = SERVER_ID
         message.guild.id = SERVER_ID
+        message.guild.get_member.return_value.display_name = "Target"
+        message.guild.get_member.return_value.display_avatar.read = AsyncMock(return_value=bot_module.PROFILE_SHOP_CURRENCY_ICON.read_bytes())
         message.content = "v!profile <@!456>"
         message.embeds = []
         message.attachments = []

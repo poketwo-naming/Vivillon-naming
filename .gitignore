@@ -27,6 +27,8 @@ profile_data.json
 profile_data.json.tmp
 profile_inventory.json
 profile_inventory.json.tmp
+pokeball_drops.json
+pokeball_drops.json.tmp
 backups/
 shinyhunts.json
 collections.json

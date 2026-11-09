@@ -45,6 +45,7 @@ import pg_store
 from data_paths import data_path
 from daycare import DaycareFeature
 from help_menu import HELP_COMMAND_PATTERN, build_help_menu_embed
+from pokeball_drops import PokeballDrops
 from openai import AsyncOpenAI, BadRequestError, OpenAIError
 from openai.types.chat import (
     ChatCompletionMessageParam,
@@ -6249,6 +6250,11 @@ def render_profile_image(
     stats: dict[str, int],
     emoji_assets: dict[str, bytes] | None = None,
     records: dict[str, ProfileIvRecord] | None = None,
+    *,
+    username: str | None = None,
+    avatar: bytes | None = None,
+    level: int = 0,
+    dyes: dict[str, dict[str, str]] | None = None,
 ) -> BytesIO:
     width, height = 1400, 825
     background_key = str(settings["background"])
@@ -6275,6 +6281,11 @@ def render_profile_image(
             else:
                 image = ImageOps.fit(background, (width, height))
         image = image.filter(ImageFilter.GaussianBlur(radius=12))
+    background_dye = (dyes or {}).get("background")
+    if background_dye is not None:
+        image = Image.blend(
+            image, Image.new("RGB", image.size, background_dye["color"]), 0.35
+        )
     draw = ImageDraw.Draw(image)
     middle_background_image_path = PROFILE_MIDDLE_BACKGROUND_IMAGES.get(
         middle_key
@@ -6302,6 +6313,24 @@ def render_profile_image(
         image.paste(middle_background, (430, 0))
     heading_font = profile_font(36, bold=True)
     stat_font = profile_font(30)
+    if username is not None:
+        if avatar is not None:
+            try:
+                with Image.open(BytesIO(avatar)) as source:
+                    avatar_image = ImageOps.fit(source.convert("RGB"), (110, 110))
+                mask = Image.new("L", (110, 110), 0)
+                ImageDraw.Draw(mask).ellipse((0, 0, 109, 109), fill=255)
+                image.paste(avatar_image, (64, 55), mask)
+            except OSError:
+                logger.warning("Could not render profile avatar", exc_info=True)
+        username_font = profile_font(25, bold=True)
+        display_name = username
+        while display_name and draw.textlength(display_name, font=username_font) > 225:
+            display_name = display_name[:-1]
+        if display_name != username:
+            display_name = display_name[: max(0, len(display_name) - 1)] + "…"
+        draw.text((190, 80), display_name, font=username_font, fill=text_color)
+        draw.text((64, 185), f"Level {level}", font=profile_font(25, bold=True), fill=text_color)
     draw.text((64, 245), "Pokemon Catches", font=heading_font, fill=text_color)
     rows = (
         ("Total", "total", None),
@@ -6424,6 +6453,19 @@ def render_profile_image(
             for alpha in range(256)
         ]
         frame.putalpha(frame.getchannel("A").point(alpha_lut))
+        frame_dye = (dyes or {}).get("frame")
+        if frame_dye is not None:
+            alpha = frame.getchannel("A")
+            colored = ImageOps.colorize(
+                ImageOps.grayscale(frame), black="#000000", white=frame_dye["color"]
+            ).convert("RGBA")
+            colored.putalpha(alpha)
+            frame = colored
+            if frame_dye["rarity"] == "radiant":
+                glow = Image.new("RGBA", frame.size, frame_dye["color"])
+                glow.putalpha(alpha.filter(ImageFilter.GaussianBlur(12)).point(lambda value: value // 2))
+                glow.alpha_composite(frame)
+                frame = glow
         framed_image = Image.new("RGBA", frame.size, (0, 0, 0, 0))
         profile_scale = PROFILE_CARD_SCALES[frame_key]
         profile_card = image.convert("RGBA").resize(
@@ -7027,12 +7069,16 @@ class ProfileView(discord.ui.View):
         guild_id: int,
         *,
         preview_owner_id: int | None = None,
+        username: str | None = None,
+        avatar: bytes | None = None,
     ) -> None:
         super().__init__(timeout=900)
         self.bot = bot
         self.user_id = user_id
         self.guild_id = guild_id
         self.preview_owner_id = preview_owner_id
+        self.username = username
+        self.avatar = avatar
         self.preview_settings = (
             dict(bot.profile_settings_for_user(user_id))
             if preview_owner_id is not None
@@ -7069,6 +7115,10 @@ class ProfileView(discord.ui.View):
                         stats,
                         emoji_assets,
                         records,
+                        username=self.username,
+                        avatar=self.avatar,
+                        level=self.bot.pokeball_drops.level(self.user_id),
+                        dyes=self.bot.pokeball_drops.appearance(self.user_id, settings),
                     ),
                     filename="profile.png",
                 )
@@ -7215,6 +7265,12 @@ class NamingBot(commands.Bot):
             self.profile_inventory_path,
             self.profiles,
         )
+        self.pokeball_drops = PokeballDrops(
+            self,
+            Path(os.environ.get("POKEBALL_DATA_FILE", str(data_path("pokeball_drops.json")))),
+            Path(os.environ.get("DYE_CATALOG_FILE", str(data_path("dyes.json")))),
+            save_profile_inventory,
+        )
         self.profile_backfills_in_progress: set[int] = set()
         self.profile_backfill_stop_requests: set[int] = set()
         self.profile_emoji_cache: dict[str, bytes] | None = None
@@ -7351,29 +7407,39 @@ class NamingBot(commands.Bot):
         )
         current_assets.append(profile_inventory_item(asset_id, code))
 
-        save_profile_data(
-            self.profile_data_path,
-            updated_profiles,
-            self.profile_stats,
-            self.profile_records,
-            self.profile_seen_catch_ids,
-        )
+        previous_drop_data = self.pokeball_drops.select_purchased_copy(user_id, setting, code)
         try:
-            save_profile_inventory(self.profile_inventory_path, updated_inventory)
-        except ValueError:
+            save_profile_data(
+                self.profile_data_path,
+                updated_profiles,
+                self.profile_stats,
+                self.profile_records,
+                self.profile_seen_catch_ids,
+            )
             try:
-                save_profile_data(
-                    self.profile_data_path,
-                    self.profiles,
-                    self.profile_stats,
-                    self.profile_records,
-                    self.profile_seen_catch_ids,
-                )
+                save_profile_inventory(self.profile_inventory_path, updated_inventory)
             except ValueError:
-                logger.exception("Could not roll back profile after inventory save failure")
-                raise ValueError(
-                    "Purchase failed and the profile could not be rolled back"
-                )
+                try:
+                    save_profile_data(
+                        self.profile_data_path,
+                        self.profiles,
+                        self.profile_stats,
+                        self.profile_records,
+                        self.profile_seen_catch_ids,
+                    )
+                except ValueError:
+                    logger.exception("Could not roll back profile after inventory save failure")
+                    raise ValueError(
+                        "Purchase failed and the profile could not be rolled back"
+                    )
+                raise
+        except ValueError:
+            if previous_drop_data is not None:
+                try:
+                    self.pokeball_drops.save(previous_drop_data)
+                except ValueError:
+                    logger.exception("Could not roll back selected profile asset")
+                    raise ValueError("Purchase failed and the selected asset could not be rolled back")
             raise
 
         self.profiles = updated_profiles
@@ -8236,6 +8302,7 @@ class NamingBot(commands.Bot):
         )
 
     async def close(self) -> None:
+        self.pokeball_drops.close()
         for task in self.time_tasks.values():
             task.cancel()
         self.time_tasks.clear()
@@ -8582,6 +8649,30 @@ class NamingBot(commands.Bot):
             if PROFILE_COMMAND_PATTERN.fullmatch(message.content):
                 await self.handle_profile_command(message)
                 return
+            if re.match(r"^v!drops(?:\s|$)", message.content, re.IGNORECASE):
+                try:
+                    await self.pokeball_drops.configure(message)
+                except ValueError:
+                    logger.exception("Could not save Pokéball drop settings")
+                    await message.reply("I couldn't save the drop settings. Check the bot logs.", mention_author=False)
+                return
+            if re.fullmatch(r"v!dyeinv\s*", message.content, re.IGNORECASE):
+                await self.pokeball_drops.dye_inventory(message)
+                return
+            if re.match(r"^v!dye(?:\s|$)", message.content, re.IGNORECASE):
+                try:
+                    await self.pokeball_drops.dye(message)
+                except ValueError:
+                    logger.exception("Could not apply profile dye")
+                    await message.reply("I couldn't save the dye. Check the bot logs.", mention_author=False)
+                return
+            if re.match(r"^v!equip(?:\s|$)", message.content, re.IGNORECASE):
+                try:
+                    await self.pokeball_drops.equip(message)
+                except ValueError:
+                    logger.exception("Could not equip profile asset")
+                    await message.reply("I couldn't equip that asset. Check the bot logs.", mention_author=False)
+                return
             if re.fullmatch(r"v!shop\s*", message.content, re.IGNORECASE):
                 await self.handle_profile_shop_command(message)
                 return
@@ -8685,6 +8776,7 @@ class NamingBot(commands.Bot):
             return
 
         if SPAWN_PATTERN.search(text):
+            self.pokeball_drops.record_spawn(message)
             await self.handle_spawn(message)
 
     async def is_application_owner(self, user_id: int) -> bool:
@@ -9492,11 +9584,29 @@ class NamingBot(commands.Bot):
         stats = self.profile_stats_for_user(message.guild.id, user_id)
         records = self.profile_records_for_user(message.guild.id, user_id)
         emoji_assets = await self.load_profile_emoji_assets()
+        member = message.guild.get_member(user_id)
+        if member is None and user_id == message.author.id:
+            member = message.author
+        user = member or self.get_user(user_id)
+        if user is None:
+            try:
+                user = await self.fetch_user(user_id)
+            except discord.HTTPException:
+                logger.warning("Could not fetch profile user %s", user_id, exc_info=True)
+        username = user.display_name if user is not None else f"User {user_id}"
+        avatar = None
+        if user is not None:
+            try:
+                avatar = await user.display_avatar.read()
+            except (discord.HTTPException, aiohttp.ClientError):
+                logger.warning("Could not fetch profile avatar for %s", user_id, exc_info=True)
         view = ProfileView(
             self,
             user_id,
             message.guild.id,
             preview_owner_id=preview_owner_id,
+            username=username,
+            avatar=avatar,
         )
         profile_file = discord.File(
             render_profile_image(
@@ -9504,6 +9614,10 @@ class NamingBot(commands.Bot):
                 stats,
                 emoji_assets,
                 records,
+                username=username,
+                avatar=avatar,
+                level=self.pokeball_drops.level(user_id),
+                dyes=self.pokeball_drops.appearance(user_id, settings),
             ),
             filename="profile.png",
         )
@@ -10097,6 +10211,8 @@ class NamingBot(commands.Bot):
             return
         text = message_text(after)
         if SPAWN_PATTERN.search(text):
+            if poketwo_catch:
+                self.pokeball_drops.record_spawn(after)
             await self.handle_spawn(after)
 
     async def handle_grab_command(self, message: discord.Message) -> None:
