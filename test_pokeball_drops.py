@@ -4,12 +4,13 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import discord
 
 from bot import PROFILE_DEFAULTS, PROFILE_STAT_DEFAULTS, render_profile_image, save_profile_inventory
-from pokeball_drops import DyeInventoryView, PokeballDrops, PokeballView, level_for_xp, load_dyes
+from pokeball_drops import BALL_LIFETIME, INTERVAL, DyeInventoryView, PokeballDrops, PokeballView, level_for_xp, load_dyes
 from PIL import Image, ImageChops
 
 
@@ -87,6 +88,7 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_single_claim_and_failed_save_can_be_retried(self) -> None:
         view = PokeballView(self.drops)
+        view.deadline = time.monotonic() + BALL_LIFETIME
         interaction = Mock()
         interaction.user.id = 1
         interaction.user.mention = "<@1>"
@@ -117,6 +119,39 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         self.drops.record_spawn(message)
         self.assertIn(7, self.drops.tasks)
 
+    async def test_pokeball_expires_after_ten_seconds_even_when_claimed(self) -> None:
+        self.assertEqual(INTERVAL, 180)
+        self.assertEqual(BALL_LIFETIME, 10)
+        for claimed in (False, True):
+            with self.subTest(claimed=claimed):
+                view = PokeballView(self.drops)
+                view.message = Mock()
+                view.message.delete = AsyncMock()
+                view.claimed = claimed
+                with (
+                    patch("pokeball_drops.time", SimpleNamespace(monotonic=lambda: 100.0)),
+                    patch("pokeball_drops.asyncio.sleep", new=AsyncMock()) as sleep,
+                ):
+                    view.start_expiry()
+                    task = next(iter(self.drops.expiry_tasks))
+                    await task
+                sleep.assert_awaited_once_with(10)
+                view.message.delete.assert_awaited_once()
+
+    async def test_claim_rejected_at_expiry_without_reward(self) -> None:
+        view = PokeballView(self.drops)
+        view.deadline = 100.0
+        interaction = Mock()
+        interaction.user.id = 1
+        interaction.response.send_message = AsyncMock()
+        with (
+            patch("pokeball_drops.time", SimpleNamespace(monotonic=lambda: 100.0)),
+            patch.object(self.drops, "award") as award,
+        ):
+            await view.open_ball.callback(interaction)
+        award.assert_not_called()
+        self.assertIn("expired", interaction.response.send_message.await_args.args[0])
+
     async def test_timer_sends_to_configured_accessible_text_channel(self) -> None:
         guild = Mock()
         guild.id = 7
@@ -134,9 +169,10 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         self.bot.get_guild.return_value = guild
         self.drops.data["categories"]["7"] = [9]
         self.drops.last_spawn[7] = time.monotonic()
-        with patch("pokeball_drops.asyncio.sleep", new=AsyncMock(side_effect=[None, asyncio.CancelledError])):
+        with patch("pokeball_drops.asyncio.sleep", new=AsyncMock(side_effect=[None, asyncio.CancelledError])) as sleep:
             with self.assertRaises(asyncio.CancelledError):
                 await self.drops.run_guild(7)
+        self.assertEqual(sleep.await_args_list[0].args, (180,))
         channel.send.assert_awaited_once()
         self.assertIsInstance(channel.send.await_args.kwargs["view"], PokeballView)
 

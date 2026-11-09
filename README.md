@@ -476,12 +476,13 @@ Use `v!drops remove <category id> [more ids]` to remove categories and
 Developer Mode to copy a category's ID. The bot needs View Channel, Send
 Messages, Embed Links and Attach Files in the chosen channels.
 
-When Pokétwo posts a spawn in a tracked, unpaused incense channel, a five-minute
+When Pokétwo posts a spawn in a tracked, unpaused incense channel, a three-minute
 timer starts for that server. While those spawns continue, one small Pokéball
-appears every five minutes in a random accessible text channel in the
+appears every three minutes in a random accessible text channel in the
 configured categories. The first person to press its button gets the reward;
-unclaimed balls expire after five minutes. A restart ends existing balls and
-starts a new timer after the next incense spawn.
+the drop message disappears ten seconds after it is posted, whether claimed or
+not. A restart ends existing balls and starts a new timer after the next
+incense spawn.
 
 Each claim normally awards either 0–500 XP or 0–1,000 Pokédollars, with equal
 chance and an inclusive, uniformly random amount. Zero gets an unlucky message.

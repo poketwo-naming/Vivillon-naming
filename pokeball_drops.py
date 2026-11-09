@@ -13,7 +13,8 @@ from typing import Any, Callable
 import discord
 
 logger = logging.getLogger("vivillon_naming")
-INTERVAL = 300
+INTERVAL = 180
+BALL_LIFETIME = 10
 BALL_IMAGE = Path(__file__).with_name("assets") / "drop_pokeball.png"
 
 
@@ -117,6 +118,7 @@ class PokeballDrops:
                 raise ValueError(f"Invalid selected profile asset in {path}")
         load_dyes(catalog_path)
         self.tasks: dict[int, asyncio.Task] = {}
+        self.expiry_tasks: set[asyncio.Task] = set()
         self.last_spawn: dict[int, float] = {}
 
     @staticmethod
@@ -189,6 +191,7 @@ class PokeballDrops:
                     view.message = await channel.send(
                         embed=embed, file=discord.File(BALL_IMAGE, filename="pokeball.png"), view=view
                     )
+                    view.start_expiry()
                 except (discord.HTTPException, OSError):
                     logger.exception("Could not send Pokéball drop in channel %s", channel.id)
         finally:
@@ -198,6 +201,9 @@ class PokeballDrops:
         for task in self.tasks.values():
             task.cancel()
         self.tasks.clear()
+        for task in self.expiry_tasks:
+            task.cancel()
+        self.expiry_tasks.clear()
 
     def award(self, user_id: int) -> str:
         dyes = load_dyes(self.catalog_path)
@@ -425,34 +431,49 @@ class DyeInventoryView(discord.ui.View):
 
 class PokeballView(discord.ui.View):
     def __init__(self, drops: PokeballDrops) -> None:
-        super().__init__(timeout=INTERVAL)
+        super().__init__(timeout=None)
         self.drops = drops
         self.claimed = False
         self.message: discord.Message | None = None
+        self.deadline: float | None = None
+        self.claim_lock = asyncio.Lock()
+
+    def start_expiry(self) -> None:
+        self.deadline = time.monotonic() + BALL_LIFETIME
+        task = asyncio.create_task(self.expire())
+        self.drops.expiry_tasks.add(task)
+        task.add_done_callback(self.drops.expiry_tasks.discard)
+
+    async def expire(self) -> None:
+        if self.deadline is None:
+            raise RuntimeError("Pokéball expiry was not started")
+        await asyncio.sleep(max(0, self.deadline - time.monotonic()))
+        async with self.claim_lock:
+            self.stop()
+            if self.message is not None:
+                try:
+                    await self.message.delete()
+                except discord.NotFound:
+                    pass
+                except discord.HTTPException:
+                    logger.warning("Could not delete expired Pokéball message", exc_info=True)
 
     @discord.ui.button(label="Open Pokéball", style=discord.ButtonStyle.primary)
     async def open_ball(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        if self.claimed:
-            await interaction.response.send_message("Someone already opened this Pokéball.", ephemeral=True)
-            return
-        self.claimed = True
-        try:
-            result = self.drops.award(interaction.user.id)
-        except (ValueError, OSError):
-            self.claimed = False
-            logger.exception("Could not save Pokéball reward for user %s", interaction.user.id)
-            await interaction.response.send_message("I couldn't save your reward. Please try again.", ephemeral=True)
-            return
-        button.disabled = True
-        await interaction.response.edit_message(content=f"{interaction.user.mention} {result}", view=self, allowed_mentions=discord.AllowedMentions.none())
-        self.stop()
-
-    async def on_timeout(self) -> None:
-        if self.message is not None and not self.claimed:
-            for child in self.children:
-                if isinstance(child, discord.ui.Button):
-                    child.disabled = True
+        async with self.claim_lock:
+            if self.claimed:
+                await interaction.response.send_message("Someone already opened this Pokéball.", ephemeral=True)
+                return
+            if self.deadline is None or time.monotonic() >= self.deadline:
+                await interaction.response.send_message("This Pokéball has expired.", ephemeral=True)
+                return
+            self.claimed = True
             try:
-                await self.message.edit(content="This Pokéball expired.", view=self)
-            except discord.HTTPException:
-                logger.warning("Could not expire Pokéball message", exc_info=True)
+                result = self.drops.award(interaction.user.id)
+            except (ValueError, OSError):
+                self.claimed = False
+                logger.exception("Could not save Pokéball reward for user %s", interaction.user.id)
+                await interaction.response.send_message("I couldn't save your reward. Please try again.", ephemeral=True)
+                return
+            button.disabled = True
+            await interaction.response.edit_message(content=f"{interaction.user.mention} {result}", view=self, allowed_mentions=discord.AllowedMentions.none())
