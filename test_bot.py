@@ -5187,6 +5187,8 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
              "attachment://elixirreuniclus.png"),
             ("Elixir Reuniclus", True, False, "shiny",
              "attachment://elixirreuniclus.png"),
+            ("Terapagos", True, False, "shiny",
+             "attachment://terapagos.png"),
             ("Gigantamax Low Key Toxtricity", False, True, "gigantamax",
              "https://raw.githubusercontent.com/PokeAPI/sprites/master/"
              "sprites/pokemon/other/home/10228.png"),
@@ -6009,6 +6011,37 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
                     "cauldronreuniclus.png",
                 )
                 send_kwargs["file"].close()
+
+    async def test_shiny_terapagos_thumbnail_is_attached_to_both_boards_and_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            self.bot.starboard_settings_path = Path(directory) / "starboards.json"
+            self.bot.starboard_settings = {}
+            self.bot.set_starboard_channel(SERVER_ID, "normal", 101)
+            self.bot.set_starboard_channel(SERVER_ID, "shiny", 202)
+            main_channel = Mock(send=AsyncMock())
+            shiny_channel = Mock(send=AsyncMock())
+            self.bot.get_channel = Mock(side_effect={101: main_channel, 202: shiny_channel}.get)
+            message = Mock()
+            message.id = 478
+            message.guild.id = SERVER_ID
+            message.channel.id = 304
+            message.author.id = 123
+            message.created_at = discord.utils.utcnow()
+            message.content = (
+                "Congratulations <@123>! You caught a Level 36 Terapagos! "
+                "(33.33%)! These colors seem unusual... ✨"
+            )
+            message.embeds = []
+
+            await self.bot.handle_catch_starboard(message)
+            await self.bot.post_test_starboard(message, "Terapagos", category="shiny")
+
+            for channel in (main_channel, shiny_channel):
+                self.assertEqual(channel.send.await_count, 2)
+                for call in channel.send.await_args_list:
+                    self.assertEqual(call.kwargs["embed"].thumbnail.url, "attachment://terapagos.png")
+                    self.assertEqual(call.kwargs["file"].filename, "terapagos.png")
+                    call.kwargs["file"].close()
 
     async def test_normal_starboard_posts_catch_detection_embeds_from_other_bots(
         self,

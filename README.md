@@ -222,7 +222,8 @@ access to that custom emoji and permission to use external emojis where needed.
 Shiny catches are also posted to the shinyboard
 when configured. Shiny posts include the catcher, Pokémon, level, IV, gender
 when Pokétwo provides it, and a chain only when the catch message identifies
-one. Normal Starboard Pokémon Spotlight embeds use the same static 2D artwork
+one. Shiny Terapagos catch embeds use the bundled custom thumbnail. Normal
+Starboard Pokémon Spotlight embeds use the same static 2D artwork
 as naming thumbnails. Starboard channel choices and the shiny count are saved in
 `starboard_settings.json` by default; set `STARBOARD_SETTINGS_FILE` to use
 another path. Each caught shiny increments the saved shiny count and renames
