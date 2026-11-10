@@ -312,7 +312,7 @@ PROFILE_FRAME_OPENINGS: Final[dict[str, tuple[int, int, int, int]]] = {
     "magic": (50, 71, 1416, 866),
     "amethyst": (20, 45, 1095, 723),
     "celestial": (82, 110, 1339, 851),
-    "ocean": (125, 165, 1206, 802),
+    "ocean": (91, 123, 1491, 948),
 }
 PROFILE_FRAME_SCALES: Final[dict[str, float]] = {
     "mystic": 1.0,

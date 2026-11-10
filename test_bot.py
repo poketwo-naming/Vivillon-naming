@@ -4667,6 +4667,8 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
 
     def test_shop_frames_fit_native_profile_without_warping(self) -> None:
         stats = self.bot.profile_stats_for_user(SERVER_ID, 123)
+        frame_sizes: dict[str, tuple[int, int]] = {}
+        card_positions: dict[str, tuple[int, int]] = {}
         for frame_key in ("celestial", "ocean"):
             for backgrounds in (
                 {},
@@ -4703,6 +4705,8 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
                             delta=0.001,
                         )
                     x, y = round(left * scale), round(top * scale)
+                    frame_sizes[frame_key] = frame.size
+                    card_positions[frame_key] = (x, y)
                     expected = Image.new("RGBA", frame.size, (0, 0, 0, 0))
                     expected.alpha_composite(card, (x, y))
                     expected.alpha_composite(frame)
@@ -4729,6 +4733,8 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
                                 ).getextrema()[1],
                                 2,
                             )
+        self.assertEqual(frame_sizes["ocean"], frame_sizes["celestial"])
+        self.assertEqual(card_positions["ocean"], card_positions["celestial"])
 
     def test_shop_frames_use_selected_background_and_dyes(self) -> None:
         stats = self.bot.profile_stats_for_user(SERVER_ID, 123)
