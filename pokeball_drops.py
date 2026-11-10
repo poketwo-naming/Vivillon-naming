@@ -329,7 +329,7 @@ class PokeballDrops:
             if not amount:
                 return "found **0 XP**. How unlucky!"
             return f"found **{amount:,} XP**!" + (f" They reached **level {new_level}**!" if new_level > old_level else "")
-        amount = random.randint(0, 1000)
+        amount = random.randint(0, 500)
         inventory = copy.deepcopy(self.bot.profile_inventory)
         user = inventory.setdefault(str(user_id), {"balances": {}, "assets": []})
         currency = "Pokédollar"

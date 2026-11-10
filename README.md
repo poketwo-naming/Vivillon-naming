@@ -502,7 +502,7 @@ button expires, as long as the message hasn't been deleted and the viewer can
 access the drop channel. Anyone viewing the log can see the drop channel; make
 sure the log channel's permissions are appropriate.
 
-Each claim normally awards either 0–500 XP or 0–1,000 Pokédollars, with equal
+Each claim normally awards either 0–500 XP or 0–500 Pokédollars, with equal
 chance and an inclusive, uniformly random amount. Zero gets an unlucky message.
 Levels are global across servers and start at 0: level 1 needs 500 XP, then
 each following level costs 100 more XP than the previous one. The profile card

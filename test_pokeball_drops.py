@@ -45,10 +45,15 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(loaded.level(1), 1)
 
     async def test_coins_and_unlucky_zero(self) -> None:
-        with patch("pokeball_drops.random.randrange", side_effect=[1, 1, 1, 1]), patch("pokeball_drops.random.randint", return_value=1000):
-            self.assertIn("1,000", self.drops.award(1))
-        self.assertEqual(self.bot.profile_inventory["1"]["balances"]["Pokédollar"], 1000)
+        with patch("pokeball_drops.random.randrange", side_effect=[1, 1, 1, 1]), patch("pokeball_drops.random.randint", return_value=500) as randint:
+            self.assertIn("500 Pokédollars", self.drops.award(1))
+            randint.assert_called_once_with(0, 500)
+        self.assertEqual(self.bot.profile_inventory["1"]["balances"]["Pokédollar"], 500)
         self.assertTrue(self.bot.profile_inventory_path.is_file())
+        with patch("pokeball_drops.random.randrange", side_effect=[1, 1, 1, 1]), patch("pokeball_drops.random.randint", return_value=0) as randint:
+            self.assertIn("0 Pokédollars", self.drops.award(1))
+            randint.assert_called_once_with(0, 500)
+        self.assertEqual(self.bot.profile_inventory["1"]["balances"]["Pokédollar"], 500)
         with patch("pokeball_drops.random.randrange", side_effect=[1, 1, 1, 0]), patch("pokeball_drops.random.randint", return_value=0):
             self.assertIn("unlucky", self.drops.award(1))
 
