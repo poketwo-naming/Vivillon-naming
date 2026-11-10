@@ -7197,6 +7197,16 @@ class ProfileView(discord.ui.View):
         )
 
 
+def bingo_display_name(message: discord.Message, user_id: int) -> str:
+    # Plain text instead of <@id> so Discord shows no mention highlight.
+    guild = getattr(message, "guild", None)
+    member = guild.get_member(user_id) if guild is not None else None
+    name = getattr(member, "display_name", None)
+    if not isinstance(name, str) or not name:
+        return "Trainer"
+    return discord.utils.escape_markdown(discord.utils.escape_mentions(name))
+
+
 class NamingBot(commands.Bot):
     def __init__(self, config: Config) -> None:
         intents = discord.Intents.default()
@@ -8675,7 +8685,7 @@ class NamingBot(commands.Bot):
                 ]
             try:
                 await message.reply(
-                    f"<@{user_id}> you completed your bingo and got "
+                    f"{bingo_display_name(message, user_id)} you completed your bingo and got "
                     f"{reward} pokedollars!",
                     mention_author=False,
                     allowed_mentions=discord.AllowedMentions(

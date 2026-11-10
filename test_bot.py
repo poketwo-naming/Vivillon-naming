@@ -2533,7 +2533,7 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         message.reply.assert_awaited_once()
         self.assertEqual(
             message.reply.await_args.args[0],
-            "<@123> you completed your bingo and got 25 pokedollars!",
+            "Trainer you completed your bingo and got 25 pokedollars!",
         )
         self.assertFalse(
             message.reply.await_args.kwargs["allowed_mentions"].users
@@ -2565,7 +2565,7 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         message.reply.assert_awaited_once()
         self.assertEqual(
             message.reply.await_args.args[0],
-            "<@123> you completed your bingo and got 200 pokedollars!",
+            "Trainer you completed your bingo and got 200 pokedollars!",
         )
 
     async def test_shop_shows_three_categories_and_empty_category(self) -> None:
