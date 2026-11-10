@@ -282,6 +282,7 @@ PROFILE_FRAMES: Final[dict[str, tuple[str, str]]] = {
     "moonveil": ("Moonveil", "Moonveil profile frame"),
     "jirachi": ("Jirachi", "Jirachi profile frame"),
     "magic": ("Magic", "Magic profile frame"),
+    "amethyst": ("Amethyst", "Amethyst profile frame"),
 }
 PROFILE_FRAME_IMAGES: Final[dict[str, Path]] = {
     "mystic": Path(__file__).with_name("Frames") / "mystic.png",
@@ -292,6 +293,7 @@ PROFILE_FRAME_IMAGES: Final[dict[str, Path]] = {
     "moonveil": Path(__file__).with_name("Frames") / "moonveil.png",
     "jirachi": Path(__file__).with_name("Frames") / "jirachi.png",
     "magic": Path(__file__).with_name("Frames") / "magic.png",
+    "amethyst": Path(__file__).with_name("Frames") / "amethyst.png",
 }
 PROFILE_FRAME_OPENINGS: Final[dict[str, tuple[int, int, int, int]]] = {
     "nightflower": (74, 84, 1595, 845),
@@ -300,6 +302,7 @@ PROFILE_FRAME_OPENINGS: Final[dict[str, tuple[int, int, int, int]]] = {
     "moonveil": (118, 130, 1418, 894),
     "jirachi": (65, 64, 1086, 699),
     "magic": (50, 71, 1416, 866),
+    "amethyst": (20, 45, 1095, 723),
 }
 PROFILE_FRAME_SCALES: Final[dict[str, float]] = {
     "mystic": 1.0,
@@ -6484,6 +6487,7 @@ def render_profile_image(
     frame_key = str(settings["frame"])
     frame_image_path = PROFILE_FRAME_IMAGES.get(frame_key)
     if frame_image_path is not None:
+        profile_opening_size: tuple[int, int] | None = None
         with Image.open(frame_image_path) as frame_image:
             opening = PROFILE_FRAME_OPENINGS.get(frame_key)
             if opening is None:
@@ -6500,6 +6504,26 @@ def render_profile_image(
                     (frame.width - width) // 2,
                     (frame.height - height) // 2,
                 )
+            elif frame_key == "amethyst":
+                left, top, right, bottom = opening
+                frame_scale = min(
+                    width / (right - left),
+                    height / (bottom - top),
+                )
+                frame = frame_image.convert("RGBA").resize(
+                    (
+                        round(frame_image.width * frame_scale),
+                        round(frame_image.height * frame_scale),
+                    ),
+                    Image.Resampling.LANCZOS,
+                )
+                opening_width = round((right - left) * frame_scale)
+                opening_height = round((bottom - top) * frame_scale)
+                profile_position = (
+                    round(left * frame_scale),
+                    round(top * frame_scale),
+                )
+                profile_opening_size = (opening_width, opening_height)
             else:
                 left, top, right, bottom = opening
                 scale_x = width / (right - left)
@@ -6537,22 +6561,29 @@ def render_profile_image(
                 glow.alpha_composite(frame)
                 frame = glow
         framed_image = Image.new("RGBA", frame.size, (0, 0, 0, 0))
-        profile_scale = PROFILE_CARD_SCALES[frame_key]
-        profile_card = image.convert("RGBA").resize(
-            (round(width * profile_scale), round(height * profile_scale)),
-            Image.Resampling.LANCZOS,
-        )
-        card_mask = Image.new("L", profile_card.size, 0)
-        ImageDraw.Draw(card_mask).rounded_rectangle(
-            (0, 0, profile_card.width - 1, profile_card.height - 1),
-            radius=round(PROFILE_FRAME_CORNER_RADIUS * profile_scale),
-            fill=255,
-        )
-        profile_card.putalpha(card_mask)
-        card_position = (
-            profile_position[0] - (profile_card.width - width) // 2,
-            profile_position[1] - (profile_card.height - height) // 2,
-        )
+        if profile_opening_size is not None:
+            profile_card = image.convert("RGBA").resize(
+                profile_opening_size,
+                Image.Resampling.LANCZOS,
+            )
+            card_position = profile_position
+        else:
+            profile_scale = PROFILE_CARD_SCALES[frame_key]
+            profile_card = image.convert("RGBA").resize(
+                (round(width * profile_scale), round(height * profile_scale)),
+                Image.Resampling.LANCZOS,
+            )
+            card_mask = Image.new("L", profile_card.size, 0)
+            ImageDraw.Draw(card_mask).rounded_rectangle(
+                (0, 0, profile_card.width - 1, profile_card.height - 1),
+                radius=round(PROFILE_FRAME_CORNER_RADIUS * profile_scale),
+                fill=255,
+            )
+            profile_card.putalpha(card_mask)
+            card_position = (
+                profile_position[0] - (profile_card.width - width) // 2,
+                profile_position[1] - (profile_card.height - height) // 2,
+            )
         framed_image.alpha_composite(profile_card, dest=card_position)
         framed_image.alpha_composite(frame)
         image = framed_image

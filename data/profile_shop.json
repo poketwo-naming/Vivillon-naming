@@ -1,3 +1,5 @@
 {
-  "items": []
+  "items": [
+    {"type": "frame", "key": "amethyst", "price": 45000}
+  ]
 }

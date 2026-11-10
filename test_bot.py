@@ -2587,14 +2587,9 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(cast(discord.ui.Button, view.children[-2]).disabled)
         self.assertTrue(cast(discord.ui.Button, view.children[-1]).disabled)
 
-        self.bot.profile_shop = {
-            "frame:mystic": {
-                "type": "frame",
-                "key": "mystic",
-                "price": 80,
-                "currency": bot_module.PROFILE_SHOP_CURRENCY,
-            }
-        }
+        self.bot.profile_shop = bot_module.load_profile_shop(
+            Path(__file__).with_name("data") / "profile_shop.json"
+        )
         populated_view = bot_module.ProfileShopView(self.bot, 123)
         frames_button = next(
             child
@@ -2604,6 +2599,8 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         )
         await frames_button.callback(interaction)
         self.assertIsNone(populated_view.embed.thumbnail.url)
+        self.assertIn("Amethyst", populated_view.embed.description or "")
+        self.assertIn("45,000 Pokédollar", populated_view.embed.description or "")
         icon_files = bot_module.profile_currency_icon_files()
         try:
             self.assertEqual([file.filename for file in icon_files], ["pokedollar.png"])
@@ -2774,25 +2771,25 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_purchase_with_insufficient_currency_changes_nothing(self) -> None:
-        asset_id = "frame:mystic"
+        asset_id = "frame:amethyst"
         self.bot.profile_shop = {
             asset_id: {
                 "type": "frame",
-                "key": "mystic",
-                "price": 80,
+                "key": "amethyst",
+                "price": 45000,
                 "currency": bot_module.PROFILE_SHOP_CURRENCY,
             }
         }
         self.bot.profile_inventory = {
             "123": {
-                "balances": {bot_module.PROFILE_SHOP_CURRENCY: 20},
+                "balances": {bot_module.PROFILE_SHOP_CURRENCY: 44999},
                 "assets": [],
             }
         }
         message = Mock()
         message.guild = Mock()
         message.author.id = 123
-        message.content = "v!buy mystic"
+        message.content = "v!buy amethyst"
         message.reply = AsyncMock(return_value=Mock())
         await self.bot.handle_profile_buy_command(message)
         purchase_view = awaited_kwargs(message.reply)["view"]
@@ -2810,7 +2807,7 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.bot.profiles, {})
         self.assertEqual(
             self.bot.profile_inventory["123"]["balances"][bot_module.PROFILE_SHOP_CURRENCY],
-            20,
+            44999,
         )
         self.assertIn(
             "You don't have enough Pokédollar",
@@ -4402,6 +4399,55 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         with Image.open(render_profile_image(settings, stats)) as actual:
             self.assertEqual(actual.size, frame.size)
             self.assertEqual(actual.mode, "RGBA")
+            self.assertEqual(actual.tobytes(), expected.tobytes())
+
+    def test_profile_card_renders_amethyst_frame_without_warping(self) -> None:
+        settings = {**self.bot.profile_settings_for_user(123), "frame": "amethyst"}
+        stats = self.bot.profile_stats_for_user(SERVER_ID, 123)
+        with Image.open(
+            render_profile_image({**settings, "frame": "none"}, stats)
+        ) as unframed:
+            base = unframed.convert("RGB")
+        with Image.open(
+            Path(__file__).with_name("Frames") / "amethyst.png"
+        ) as source:
+            left, top, right, bottom = PROFILE_FRAME_OPENINGS["amethyst"]
+            frame_scale = min(
+                base.width / (right - left),
+                base.height / (bottom - top),
+            )
+            frame = source.convert("RGBA").resize(
+                (
+                    round(source.width * frame_scale),
+                    round(source.height * frame_scale),
+                ),
+                Image.Resampling.LANCZOS,
+            )
+        opening_width = round((right - left) * frame_scale)
+        opening_height = round((bottom - top) * frame_scale)
+        profile_card = base.convert("RGBA").resize(
+            (opening_width, opening_height),
+            Image.Resampling.LANCZOS,
+        )
+        frame.putalpha(
+            frame.getchannel("A").point(profile_frame_alpha)
+        )
+        expected = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+        profile_position = (
+            round(left * frame_scale),
+            round(top * frame_scale),
+        )
+        self.assertEqual(profile_card.size, (opening_width, opening_height))
+        expected.alpha_composite(profile_card, dest=profile_position)
+        expected.alpha_composite(frame)
+
+        with Image.open(render_profile_image(settings, stats)) as actual:
+            self.assertEqual(actual.size, frame.size)
+            self.assertAlmostEqual(
+                actual.width / actual.height,
+                1115 / 768,
+                places=3,
+            )
             self.assertEqual(actual.tobytes(), expected.tobytes())
 
     def test_profile_card_renders_selected_moonlit_frame_at_reference_size(self) -> None:
@@ -9454,6 +9500,11 @@ class PokemonNameValidationTests(unittest.TestCase):
 class ProfileShopDataTests(unittest.TestCase):
     def test_shop_catalog_inventory_migration_and_asset_codes(self) -> None:
         import bot
+
+        shop_items = bot.load_profile_shop(
+            Path(__file__).with_name("data") / "profile_shop.json"
+        )
+        self.assertEqual(shop_items["frame:amethyst"]["price"], 45000)
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

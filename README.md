@@ -424,7 +424,8 @@ surrounding background, helping the two images blend together. Text is drawn
 above both background layers. The
 default picker choices are labeled **Default text color**, **Default
 background**, and **Default middle background**. The frame picker offers
-**No frame**, **Mystic**, **Gem**, and **Nightflower**. The Buneary background,
+**No frame**, **Mystic**, **Gem**, and **Nightflower**. The Amethyst frame is
+available in the Frames shop for 45,000 Pokédollar. The Buneary background,
 Buneary middle background, and Flower Spring frame are limited to their
 designated profile; the Slakoth background, Slakoth middle background, and
 Moonlit frame are limited to a different designated profile. The Marshadow
@@ -450,6 +451,7 @@ is private runtime data and is ignored by Git. Balances start at zero Pokédolla
 An asset can be purchased any
 number of times. Every purchase charges its price and adds a separate inventory
 line with its own seven-character code, even when the asset is already owned.
+Purchases are rejected when the buyer's balance is below the listed price.
 
 Add assets and prices to `profile_shop.json`. `type` is `frame`, `background`,
 or `middle_background`; `key` must match an existing profile asset key. Shop
