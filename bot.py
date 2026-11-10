@@ -8548,6 +8548,36 @@ class NamingBot(commands.Bot):
             self.save_active_incenses()
         return failed
 
+    async def bingo_user_fallback(
+        self, message: discord.Message, source: discord.Message | None
+    ) -> int | None:
+        # Slash commands, replies to bot messages and mention-only messages have no human reply target.
+        def human_id(user: object) -> int | None:
+            user_id = getattr(user, "id", None)
+            if getattr(user, "bot", False) or not isinstance(user_id, int) or isinstance(user_id, bool):
+                return None
+            return user_id
+
+        for candidate in (message, source):
+            if candidate is None:
+                continue
+            metadata = getattr(candidate, "interaction_metadata", None)
+            interaction = getattr(candidate, "interaction", None)
+            for user in (getattr(metadata, "user", None), getattr(interaction, "user", None)):
+                if human_id(user) is not None:
+                    return human_id(user)
+        if source is not None:
+            inner = getattr(getattr(source, "reference", None), "resolved", None)
+            if human_id(getattr(inner, "author", None)) is not None:
+                return human_id(inner.author)
+            for user in getattr(source, "mentions", None) or []:
+                if human_id(user) is not None:
+                    return human_id(user)
+        for user in getattr(message, "mentions", None) or []:
+            if human_id(user) is not None:
+                return human_id(user)
+        return None
+
     async def handle_bingo_reward(self, message: discord.Message) -> None:
         message_id = getattr(message, "id", None)
         if isinstance(message_id, bool) or not isinstance(message_id, int):
@@ -8599,10 +8629,15 @@ class NamingBot(commands.Bot):
                         else getattr(source_author, "id", None)
                     )
             if not isinstance(user_id, int) or isinstance(user_id, bool):
+                user_id = await self.bingo_user_fallback(message, source)
+            if not isinstance(user_id, int) or isinstance(user_id, bool):
                 logger.warning(
                     "Skipping bingo reward for message %s: completing user "
-                    "could not be resolved",
+                    "could not be resolved (reference=%s, source_author=%s, source_bot=%s)",
                     message_id,
+                    getattr(reference, "message_id", None),
+                    getattr(source_author, "id", None),
+                    getattr(source_author, "bot", None),
                 )
                 return
 
