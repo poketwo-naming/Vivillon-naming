@@ -8679,7 +8679,7 @@ class NamingBot(commands.Bot):
                     f"{reward} pokedollars!",
                     mention_author=False,
                     allowed_mentions=discord.AllowedMentions(
-                        users=True,
+                        users=False,
                         roles=False,
                         everyone=False,
                     ),

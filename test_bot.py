@@ -2535,7 +2535,7 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
             message.reply.await_args.args[0],
             "<@123> you completed your bingo and got 25 pokedollars!",
         )
-        self.assertTrue(
+        self.assertFalse(
             message.reply.await_args.kwargs["allowed_mentions"].users
         )
         self.assertEqual(

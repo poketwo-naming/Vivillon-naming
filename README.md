@@ -467,7 +467,7 @@ owned copy gets a separate unique code shown in `v!inv`.
 
 The optional `currency` field defaults to `Pokédollar`. `PROFILE_SHOP_FILE` and
 `PROFILE_INVENTORY_FILE` can override the default data paths.
-When Pokétwo reports a completed Bingo quest, its completing member is mentioned
+When Pokétwo reports a completed Bingo quest, its completing member is named (without a notification ping)
 and awarded 25 Pokédollars. Completing a full blackout awards 200 Pokédollars.
 
 ### Incense Pokéball drops and dyes
