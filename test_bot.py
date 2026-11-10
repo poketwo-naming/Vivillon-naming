@@ -2489,6 +2489,85 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         await self.bot.close()
         self.directory.cleanup()
 
+    def bingo_message(self, message_id: int, content: str) -> SimpleNamespace:
+        source = SimpleNamespace(
+            author=SimpleNamespace(id=123, bot=False),
+        )
+        message = SimpleNamespace(
+            id=message_id,
+            content=content,
+            embeds=[],
+            author=SimpleNamespace(
+                id=self.bot.config.poketwo_bot_id,
+                bot=True,
+            ),
+            reference=SimpleNamespace(
+                resolved=source,
+                message_id=message_id - 1,
+            ),
+            channel=SimpleNamespace(id=456),
+            guild=None,
+            reply=AsyncMock(),
+        )
+        return message
+
+    async def test_bingo_quest_rewards_25_pokedollars_once(self) -> None:
+        message = self.bingo_message(
+            501,
+            "You completed Bingo quest A4 (Release 20 pokémon) "
+            "and received a Sunlit Chest!",
+        )
+        with (
+            patch.object(self.bot, "track_profile_catch"),
+            patch.object(self.bot, "track_profile_box_shiny", new=AsyncMock()),
+            patch.object(self.bot, "handle_catch_starboard", new=AsyncMock()),
+            patch.object(self.bot, "is_allowed_channel", return_value=False),
+        ):
+            await self.bot.on_message(message)
+            await self.bot.on_message(message)
+
+        self.assertEqual(
+            self.bot.profile_balances_for_user(123)[bot_module.PROFILE_SHOP_CURRENCY],
+            25,
+        )
+        message.reply.assert_awaited_once()
+        self.assertEqual(
+            message.reply.await_args.args[0],
+            "<@123> you completed your bingo and got 25 pokedollars!",
+        )
+        self.assertTrue(
+            message.reply.await_args.kwargs["allowed_mentions"].users
+        )
+        self.assertEqual(
+            bot_module.load_profile_inventory(self.bot.profile_inventory_path, {}),
+            self.bot.profile_inventory,
+        )
+
+    async def test_bingo_blackout_rewards_200_pokedollars_once(self) -> None:
+        message = self.bingo_message(
+            502,
+            "You got a Bingo! (12/12) You received a reward! "
+            "Your card is a Blackout! You received a Level 31 Victini!",
+        )
+        with (
+            patch.object(self.bot, "track_profile_catch"),
+            patch.object(self.bot, "track_profile_box_shiny", new=AsyncMock()),
+            patch.object(self.bot, "handle_catch_starboard", new=AsyncMock()),
+            patch.object(self.bot, "is_allowed_channel", return_value=False),
+        ):
+            await self.bot.on_message(message)
+            await self.bot.on_message(message)
+
+        self.assertEqual(
+            self.bot.profile_balances_for_user(123)[bot_module.PROFILE_SHOP_CURRENCY],
+            200,
+        )
+        message.reply.assert_awaited_once()
+        self.assertEqual(
+            message.reply.await_args.args[0],
+            "<@123> you completed your bingo and got 200 pokedollars!",
+        )
+
     async def test_shop_shows_three_categories_and_empty_category(self) -> None:
         view = bot_module.ProfileShopView(self.bot, 123)
         category_buttons = [

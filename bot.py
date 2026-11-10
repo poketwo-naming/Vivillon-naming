@@ -386,6 +386,8 @@ PROFILE_DEFAULT_ASSETS: Final[dict[str, str]] = {
     "frame": "none",
 }
 PROFILE_SHOP_CURRENCY: Final[str] = "Pokédollar"
+BINGO_QUEST_REWARD: Final[int] = 25
+BINGO_BLACKOUT_REWARD: Final[int] = 200
 PROFILE_SHOP_PAGE_SIZE: Final[int] = 10
 PROFILE_SHOP_CURRENCY_ICON: Final[Path] = (
     Path(__file__).with_name("assets") / "pokedollar.png"
@@ -7182,6 +7184,8 @@ class NamingBot(commands.Bot):
         )
         self.handled_spawn_ids: dict[int, None] = {}
         self.handled_catch_ids: dict[int, None] = {}
+        self.handled_bingo_reward_ids: dict[int, None] = {}
+        self.bingo_reward_in_progress: set[int] = set()
         self.muted_poketwo_channels: set[int] = set()
         self.incense_path = Path(
             os.environ.get("INCENSE_TRACKING_FILE", str(data_path("incenses.json")))
@@ -8494,6 +8498,116 @@ class NamingBot(commands.Bot):
             self.save_active_incenses()
         return failed
 
+    async def handle_bingo_reward(self, message: discord.Message) -> None:
+        message_id = getattr(message, "id", None)
+        if isinstance(message_id, bool) or not isinstance(message_id, int):
+            return
+        if (
+            message_id in self.handled_bingo_reward_ids
+            or message_id in self.bingo_reward_in_progress
+        ):
+            return
+
+        content = message_text(message)
+        if re.search(r"\byour card is a blackout\b", content, re.IGNORECASE):
+            reward = BINGO_BLACKOUT_REWARD
+        elif re.search(r"\byou completed bingo quest\b", content, re.IGNORECASE):
+            reward = BINGO_QUEST_REWARD
+        else:
+            return
+
+        self.bingo_reward_in_progress.add(message_id)
+        try:
+            reference = getattr(message, "reference", None)
+            source = getattr(reference, "resolved", None)
+            source_author = getattr(source, "author", None)
+            user_id = (
+                None
+                if getattr(source_author, "bot", False)
+                else getattr(source_author, "id", None)
+            )
+            if not isinstance(user_id, int) or isinstance(user_id, bool):
+                source_message_id = getattr(reference, "message_id", None)
+                fetch_message = getattr(message.channel, "fetch_message", None)
+                if (
+                    isinstance(source_message_id, int)
+                    and not isinstance(source_message_id, bool)
+                    and callable(fetch_message)
+                ):
+                    try:
+                        source = await fetch_message(source_message_id)
+                    except discord.HTTPException:
+                        logger.exception(
+                            "Could not resolve the user for bingo message %s",
+                            message_id,
+                        )
+                        return
+                    source_author = getattr(source, "author", None)
+                    user_id = (
+                        None
+                        if getattr(source_author, "bot", False)
+                        else getattr(source_author, "id", None)
+                    )
+            if not isinstance(user_id, int) or isinstance(user_id, bool):
+                logger.warning(
+                    "Skipping bingo reward for message %s: completing user "
+                    "could not be resolved",
+                    message_id,
+                )
+                return
+
+            user_key = str(user_id)
+            updated_inventory = {
+                existing_user_id: {
+                    "balances": dict(inventory.get("balances", {})),
+                    "assets": list(inventory.get("assets", [])),
+                }
+                for existing_user_id, inventory in self.profile_inventory.items()
+            }
+            user_inventory = updated_inventory.setdefault(
+                user_key,
+                {"balances": {}, "assets": []},
+            )
+            balances = user_inventory["balances"]
+            balances[PROFILE_SHOP_CURRENCY] = (
+                balances.get(PROFILE_SHOP_CURRENCY, 0) + reward
+            )
+            try:
+                save_profile_inventory(self.profile_inventory_path, updated_inventory)
+            except ValueError:
+                logger.exception(
+                    "Could not save bingo reward for user %s from message %s",
+                    user_id,
+                    message_id,
+                )
+                return
+
+            self.profile_inventory = updated_inventory
+            self.handled_bingo_reward_ids[message_id] = None
+            while len(self.handled_bingo_reward_ids) > 5000:
+                del self.handled_bingo_reward_ids[
+                    next(iter(self.handled_bingo_reward_ids))
+                ]
+            try:
+                await message.reply(
+                    f"<@{user_id}> you completed your bingo and got "
+                    f"{reward} pokedollars!",
+                    mention_author=False,
+                    allowed_mentions=discord.AllowedMentions(
+                        users=True,
+                        roles=False,
+                        everyone=False,
+                    ),
+                )
+            except discord.HTTPException:
+                logger.exception(
+                    "Could not announce bingo reward for user %s from message %s",
+                    user_id,
+                    message_id,
+                )
+        finally:
+            self.bingo_reward_in_progress.discard(message_id)
+
     async def on_message(self, message: discord.Message) -> None:
         # The org transport runs first, before the bot-author guard below would
         # drop the org bot's own JSON requests, and before channel filtering.
@@ -8515,6 +8629,8 @@ class NamingBot(commands.Bot):
             await self.handle_premium_command(message)
             return
         poketwo_catch = message.author.id == self.config.poketwo_bot_id
+        if poketwo_catch:
+            await self.handle_bingo_reward(message)
         catch_detection_report = has_catch_detection_embed(message)
         parsed_catch_report = (
             is_automated_message(message)
