@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import os
+import random
 import re
 import threading
 import time
@@ -23,7 +24,7 @@ import aiohttp
 import discord
 from discord.ext import commands
 from aiohttp import web
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps, ImageStat
+from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter, ImageFont, ImageOps, ImageStat
 from image_match import (
     CUSTOM_FORM_SPECIES,
     FORM_DISPLAY_NAMES,
@@ -6176,6 +6177,54 @@ def save_profile_data(
         raise ValueError(f"Could not save profile data to {path}") from error
 
 
+def dye_gradient(size: tuple[int, int], dye: dict[str, str]) -> Image.Image:
+    first = Image.new("RGB", size, dye["color"])
+    if dye["rarity"] == "normal" or "color2" not in dye:
+        return first
+    second = Image.new("RGB", size, dye["color2"])
+    ramp = Image.linear_gradient("L")
+    vertical = ramp.resize(size)
+    horizontal = ramp.transpose(Image.Transpose.ROTATE_90).transpose(Image.Transpose.FLIP_TOP_BOTTOM).resize(size)
+    mask = ImageChops.add(vertical, horizontal, scale=2)
+    return Image.composite(second, first, mask)
+
+
+def dye_glow_color(dye: dict[str, str]) -> tuple[int, int, int]:
+    first, second = (
+        ImageColor.getrgb(dye.get(key, dye["color"])) for key in ("color", "color2")
+    )
+    return tuple((a + b) // 2 for a, b in zip(first, second))
+
+
+def add_dye_sparkles(
+    image: Image.Image, dye: dict[str, str], count: int, mask: Image.Image | None = None
+) -> None:
+    rng = random.Random(dye.get("code", dye.get("name", "")))
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    for _ in range(count * 4):
+        x, y = rng.randrange(width), rng.randrange(height)
+        if mask is not None and mask.getpixel((x, y)) < 200:
+            continue
+        reach = rng.choice((2, 3, 4))
+        draw.line((x - reach, y, x + reach, y), fill=(255, 255, 255, 255))
+        draw.line((x, y - reach, x, y + reach), fill=(255, 255, 255, 255))
+        count -= 1
+        if count <= 0:
+            break
+
+
+def apply_background_dye(image: Image.Image, dye: dict[str, str]) -> Image.Image:
+    result = Image.blend(image.convert("RGB"), dye_gradient(image.size, dye), 0.3)
+    if dye["rarity"] == "normal":
+        return result
+    add_dye_sparkles(result, dye, 40)
+    if dye["rarity"] == "glow":
+        bloom = result.filter(ImageFilter.GaussianBlur(24))
+        result = Image.blend(result, ImageChops.screen(result, bloom), 0.6)
+    return result
+
+
 def profile_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     filename = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
     font_path = Path("/usr/share/fonts/truetype/dejavu") / filename
@@ -6303,9 +6352,7 @@ def render_profile_image(
         image = image.filter(ImageFilter.GaussianBlur(radius=12))
     background_dye = (dyes or {}).get("background")
     if background_dye is not None:
-        image = Image.blend(
-            image, Image.new("RGB", image.size, background_dye["color"]), 0.35
-        )
+        image = apply_background_dye(image, background_dye)
     draw = ImageDraw.Draw(image)
     middle_background_image_path = PROFILE_MIDDLE_BACKGROUND_IMAGES.get(
         middle_key
@@ -6476,14 +6523,17 @@ def render_profile_image(
         frame_dye = (dyes or {}).get("frame")
         if frame_dye is not None:
             alpha = frame.getchannel("A")
-            colored = ImageOps.colorize(
-                ImageOps.grayscale(frame), black="#000000", white=frame_dye["color"]
+            colored = ImageChops.multiply(
+                dye_gradient(frame.size, frame_dye),
+                ImageOps.grayscale(frame).convert("RGB"),
             ).convert("RGBA")
             colored.putalpha(alpha)
+            if frame_dye["rarity"] != "normal":
+                add_dye_sparkles(colored, frame_dye, 28, alpha)
             frame = colored
-            if frame_dye["rarity"] == "radiant":
-                glow = Image.new("RGBA", frame.size, frame_dye["color"])
-                glow.putalpha(alpha.filter(ImageFilter.GaussianBlur(12)).point(lambda value: value // 2))
+            if frame_dye["rarity"] == "glow":
+                glow = Image.new("RGBA", frame.size, dye_glow_color(frame_dye))
+                glow.putalpha(alpha.filter(ImageFilter.GaussianBlur(16)).point(lambda value: min(255, value * 3 // 4)))
                 glow.alpha_composite(frame)
                 frame = glow
         framed_image = Image.new("RGBA", frame.size, (0, 0, 0, 0))
@@ -8798,6 +8848,9 @@ class NamingBot(commands.Bot):
                 return
             if re.fullmatch(r"v!dyeinv\s*", message.content, re.IGNORECASE):
                 await self.pokeball_drops.dye_inventory(message)
+                return
+            if re.fullmatch(r"v!useddyes?\s*", message.content, re.IGNORECASE):
+                await self.pokeball_drops.used_dyes(message)
                 return
             if re.match(r"^v!dye(?:\s|$)", message.content, re.IGNORECASE):
                 try:

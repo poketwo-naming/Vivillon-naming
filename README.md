@@ -504,34 +504,34 @@ Levels are global across servers and start at 0: level 1 needs 500 XP, then
 each following level costs 100 more XP than the previous one. The profile card
 shows the member's Discord avatar, display name, and level.
 
-Claims have a 1/1,000 chance of a normal dye and a separate, exclusive
-1/7,500 chance of a radiant frame dye instead of XP or money. The bot does not
-award a rarity until that rarity has definitions in the dye catalog; a roll for
-an unavailable rarity instead awards XP or money. `v!dyeinv` lists dye codes,
-rarity and asset type. `v!dye <dye code> <asset code>` consumes a matching dye
-and applies it to that owned copy; radiant dyes only work on frames. Use
-`v!equip <asset code>` to wear a specific copy, including an undyed duplicate.
-Background dye adds a color filter; radiant frame dye also adds a glow.
+Each claim rolls for a dye before XP or money: glow dyes are about 1 in 75,000,
+radiant dyes 1 in 37,500 and normal dyes 1 in 17,500 (`DYE_ODDS` in
+`pokeball_drops.py`). A rarity with no catalog entries awards XP or money
+instead. `data/dyes.json` ships 150 dyes (50 normal, 50 radiant, 50 glow) with
+cloth images in `assets/dyes/`. Every dye has its own code, so two people with
+the same color have different codes. `v!dyeinv` lists your dyes as
+`<cloth image> <code> - <name>`. `v!dye <dye code> <asset code>` uses a dye once
+on any owned frame or background, and `v!useddyes` lists used dyes with
+"used" after the name. Use `v!equip <asset code>` to wear a specific copy.
+Normal dye adds a color filter, radiant a two-color sparkly filter, and glow
+the same plus a glow.
 
-No dyes are supplied by default. To add them later, create `data/dyes.json`
-(or set `DYE_CATALOG_FILE`) with entries like:
+To change the catalog, edit `data/dyes.json` (or set `DYE_CATALOG_FILE`):
 
 ```json
 {
   "dyes": [
-    {"name": "Pink", "type": "background", "rarity": "normal", "color": "#FF88CC"},
-    {"name": "Gold", "type": "frame", "rarity": "radiant", "color": "#FFD700"}
+    {"name": "Pink", "type": "any", "rarity": "normal", "color": "#FF88CC", "image": "assets/dyes/normal/01.png"},
+    {"name": "Gold", "type": "any", "rarity": "radiant", "color": "#FFD700", "color2": "#FF00FF"}
   ]
 }
 ```
 
-Each name must be unique; `type` is `frame` or `background`, `rarity` is
-`normal` or `radiant`, and `color` is a six-digit hex color. If a rarity has
-multiple entries, each is equally likely within that rarity. Edits to the
-catalog are picked up on the next claim. Existing dyes retain their original
-properties. Categories, XP, owned dyes and applied dye colors are saved in
-`data/pokeball_drops.json` (or `POKEBALL_DATA_FILE`). Keep it and
-`profile_inventory.json` on persistent storage.
+Each name must be unique; `type` is `any`, `frame` or `background`, `rarity` is
+`normal`, `radiant` or `glow`, `color`/`color2` are six-digit hex colors and
+`image` is an optional cloth image path. Edits are picked up on the next claim.
+Categories, XP, owned and used dyes are saved in `data/pokeball_drops.json` (or
+`POKEBALL_DATA_FILE`). Keep it and `profile_inventory.json` on persistent storage.
 
 ## Exchanging reservations
 

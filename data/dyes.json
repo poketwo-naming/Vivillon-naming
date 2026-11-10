@@ -1,0 +1,1154 @@
+{
+ "dyes": [
+  {
+   "name": "Crimson Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#DC143C",
+   "image": "assets/dyes/normal/01.png"
+  },
+  {
+   "name": "Scarlet Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#FF2400",
+   "image": "assets/dyes/normal/02.png"
+  },
+  {
+   "name": "Tangerine Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#FF8C1A",
+   "image": "assets/dyes/normal/03.png"
+  },
+  {
+   "name": "Amber Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#FFBF00",
+   "image": "assets/dyes/normal/04.png"
+  },
+  {
+   "name": "Lemon Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#FFF44F",
+   "image": "assets/dyes/normal/05.png"
+  },
+  {
+   "name": "Lime Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#A4DE02",
+   "image": "assets/dyes/normal/06.png"
+  },
+  {
+   "name": "Emerald Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#2ECC71",
+   "image": "assets/dyes/normal/07.png"
+  },
+  {
+   "name": "Jade Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#00A86B",
+   "image": "assets/dyes/normal/08.png"
+  },
+  {
+   "name": "Teal Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#008080",
+   "image": "assets/dyes/normal/09.png"
+  },
+  {
+   "name": "Turquoise Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#30D5C8",
+   "image": "assets/dyes/normal/10.png"
+  },
+  {
+   "name": "Cyan Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#00E5FF",
+   "image": "assets/dyes/normal/11.png"
+  },
+  {
+   "name": "Sky Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#4FC3F7",
+   "image": "assets/dyes/normal/12.png"
+  },
+  {
+   "name": "Cobalt Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#0047AB",
+   "image": "assets/dyes/normal/13.png"
+  },
+  {
+   "name": "Royal Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#4169E1",
+   "image": "assets/dyes/normal/14.png"
+  },
+  {
+   "name": "Indigo Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#4B0082",
+   "image": "assets/dyes/normal/15.png"
+  },
+  {
+   "name": "Violet Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#8F00FF",
+   "image": "assets/dyes/normal/16.png"
+  },
+  {
+   "name": "Orchid Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#DA70D6",
+   "image": "assets/dyes/normal/17.png"
+  },
+  {
+   "name": "Magenta Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#FF00FF",
+   "image": "assets/dyes/normal/18.png"
+  },
+  {
+   "name": "Rose Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#FF66B2",
+   "image": "assets/dyes/normal/19.png"
+  },
+  {
+   "name": "Blush Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#FFB6C1",
+   "image": "assets/dyes/normal/20.png"
+  },
+  {
+   "name": "Ruby Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#9B111E",
+   "image": "assets/dyes/normal/21.png"
+  },
+  {
+   "name": "Maroon Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#800000",
+   "image": "assets/dyes/normal/22.png"
+  },
+  {
+   "name": "Rust Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#B7410E",
+   "image": "assets/dyes/normal/23.png"
+  },
+  {
+   "name": "Copper Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#B87333",
+   "image": "assets/dyes/normal/24.png"
+  },
+  {
+   "name": "Gold Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#FFD700",
+   "image": "assets/dyes/normal/25.png"
+  },
+  {
+   "name": "Olive Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#808000",
+   "image": "assets/dyes/normal/26.png"
+  },
+  {
+   "name": "Moss Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#6B8E23",
+   "image": "assets/dyes/normal/27.png"
+  },
+  {
+   "name": "Mint Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#98FF98",
+   "image": "assets/dyes/normal/28.png"
+  },
+  {
+   "name": "Forest Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#228B22",
+   "image": "assets/dyes/normal/29.png"
+  },
+  {
+   "name": "Ocean Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#006994",
+   "image": "assets/dyes/normal/30.png"
+  },
+  {
+   "name": "Navy Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#1F2A6B",
+   "image": "assets/dyes/normal/31.png"
+  },
+  {
+   "name": "Slate Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#708090",
+   "image": "assets/dyes/normal/32.png"
+  },
+  {
+   "name": "Silver Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#C0C0C0",
+   "image": "assets/dyes/normal/33.png"
+  },
+  {
+   "name": "Charcoal Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#36454F",
+   "image": "assets/dyes/normal/34.png"
+  },
+  {
+   "name": "Plum Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#8E4585",
+   "image": "assets/dyes/normal/35.png"
+  },
+  {
+   "name": "Lavender Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#B57EDC",
+   "image": "assets/dyes/normal/36.png"
+  },
+  {
+   "name": "Peach Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#FFAB91",
+   "image": "assets/dyes/normal/37.png"
+  },
+  {
+   "name": "Coral Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#FF7F50",
+   "image": "assets/dyes/normal/38.png"
+  },
+  {
+   "name": "Salmon Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#FA8072",
+   "image": "assets/dyes/normal/39.png"
+  },
+  {
+   "name": "Sand Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#E2C27D",
+   "image": "assets/dyes/normal/40.png"
+  },
+  {
+   "name": "Chocolate Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#7B3F00",
+   "image": "assets/dyes/normal/41.png"
+  },
+  {
+   "name": "Mocha Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#967969",
+   "image": "assets/dyes/normal/42.png"
+  },
+  {
+   "name": "Ivory Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#F5F0DC",
+   "image": "assets/dyes/normal/43.png"
+  },
+  {
+   "name": "Pearl Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#EAE0C8",
+   "image": "assets/dyes/normal/44.png"
+  },
+  {
+   "name": "Lilac Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#C8A2C8",
+   "image": "assets/dyes/normal/45.png"
+  },
+  {
+   "name": "Aqua Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#7FFFD4",
+   "image": "assets/dyes/normal/46.png"
+  },
+  {
+   "name": "Storm Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#5A6C80",
+   "image": "assets/dyes/normal/47.png"
+  },
+  {
+   "name": "Ember Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#E25822",
+   "image": "assets/dyes/normal/48.png"
+  },
+  {
+   "name": "Dusk Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#6A5ACD",
+   "image": "assets/dyes/normal/49.png"
+  },
+  {
+   "name": "Midnight Cloth",
+   "type": "any",
+   "rarity": "normal",
+   "color": "#191970",
+   "image": "assets/dyes/normal/50.png"
+  },
+  {
+   "name": "Radiant Crimson-Magenta",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#DC143C",
+   "color2": "#FF00FF",
+   "image": "assets/dyes/radiant/01.png"
+  },
+  {
+   "name": "Radiant Scarlet-Rose",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#FF2400",
+   "color2": "#FF66B2",
+   "image": "assets/dyes/radiant/02.png"
+  },
+  {
+   "name": "Radiant Tangerine-Blush",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#FF8C1A",
+   "color2": "#FFB6C1",
+   "image": "assets/dyes/radiant/03.png"
+  },
+  {
+   "name": "Radiant Amber-Ruby",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#FFBF00",
+   "color2": "#9B111E",
+   "image": "assets/dyes/radiant/04.png"
+  },
+  {
+   "name": "Radiant Lemon-Maroon",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#FFF44F",
+   "color2": "#800000",
+   "image": "assets/dyes/radiant/05.png"
+  },
+  {
+   "name": "Radiant Lime-Rust",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#A4DE02",
+   "color2": "#B7410E",
+   "image": "assets/dyes/radiant/06.png"
+  },
+  {
+   "name": "Radiant Emerald-Copper",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#2ECC71",
+   "color2": "#B87333",
+   "image": "assets/dyes/radiant/07.png"
+  },
+  {
+   "name": "Radiant Jade-Gold",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#00A86B",
+   "color2": "#FFD700",
+   "image": "assets/dyes/radiant/08.png"
+  },
+  {
+   "name": "Radiant Teal-Olive",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#008080",
+   "color2": "#808000",
+   "image": "assets/dyes/radiant/09.png"
+  },
+  {
+   "name": "Radiant Turquoise-Moss",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#30D5C8",
+   "color2": "#6B8E23",
+   "image": "assets/dyes/radiant/10.png"
+  },
+  {
+   "name": "Radiant Cyan-Mint",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#00E5FF",
+   "color2": "#98FF98",
+   "image": "assets/dyes/radiant/11.png"
+  },
+  {
+   "name": "Radiant Sky-Forest",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#4FC3F7",
+   "color2": "#228B22",
+   "image": "assets/dyes/radiant/12.png"
+  },
+  {
+   "name": "Radiant Cobalt-Ocean",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#0047AB",
+   "color2": "#006994",
+   "image": "assets/dyes/radiant/13.png"
+  },
+  {
+   "name": "Radiant Royal-Navy",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#4169E1",
+   "color2": "#1F2A6B",
+   "image": "assets/dyes/radiant/14.png"
+  },
+  {
+   "name": "Radiant Indigo-Slate",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#4B0082",
+   "color2": "#708090",
+   "image": "assets/dyes/radiant/15.png"
+  },
+  {
+   "name": "Radiant Violet-Silver",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#8F00FF",
+   "color2": "#C0C0C0",
+   "image": "assets/dyes/radiant/16.png"
+  },
+  {
+   "name": "Radiant Orchid-Charcoal",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#DA70D6",
+   "color2": "#36454F",
+   "image": "assets/dyes/radiant/17.png"
+  },
+  {
+   "name": "Radiant Magenta-Plum",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#FF00FF",
+   "color2": "#8E4585",
+   "image": "assets/dyes/radiant/18.png"
+  },
+  {
+   "name": "Radiant Rose-Lavender",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#FF66B2",
+   "color2": "#B57EDC",
+   "image": "assets/dyes/radiant/19.png"
+  },
+  {
+   "name": "Radiant Blush-Peach",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#FFB6C1",
+   "color2": "#FFAB91",
+   "image": "assets/dyes/radiant/20.png"
+  },
+  {
+   "name": "Radiant Ruby-Coral",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#9B111E",
+   "color2": "#FF7F50",
+   "image": "assets/dyes/radiant/21.png"
+  },
+  {
+   "name": "Radiant Maroon-Salmon",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#800000",
+   "color2": "#FA8072",
+   "image": "assets/dyes/radiant/22.png"
+  },
+  {
+   "name": "Radiant Rust-Sand",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#B7410E",
+   "color2": "#E2C27D",
+   "image": "assets/dyes/radiant/23.png"
+  },
+  {
+   "name": "Radiant Copper-Chocolate",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#B87333",
+   "color2": "#7B3F00",
+   "image": "assets/dyes/radiant/24.png"
+  },
+  {
+   "name": "Radiant Gold-Mocha",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#FFD700",
+   "color2": "#967969",
+   "image": "assets/dyes/radiant/25.png"
+  },
+  {
+   "name": "Radiant Olive-Ivory",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#808000",
+   "color2": "#F5F0DC",
+   "image": "assets/dyes/radiant/26.png"
+  },
+  {
+   "name": "Radiant Moss-Pearl",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#6B8E23",
+   "color2": "#EAE0C8",
+   "image": "assets/dyes/radiant/27.png"
+  },
+  {
+   "name": "Radiant Mint-Lilac",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#98FF98",
+   "color2": "#C8A2C8",
+   "image": "assets/dyes/radiant/28.png"
+  },
+  {
+   "name": "Radiant Forest-Aqua",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#228B22",
+   "color2": "#7FFFD4",
+   "image": "assets/dyes/radiant/29.png"
+  },
+  {
+   "name": "Radiant Ocean-Storm",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#006994",
+   "color2": "#5A6C80",
+   "image": "assets/dyes/radiant/30.png"
+  },
+  {
+   "name": "Radiant Navy-Ember",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#1F2A6B",
+   "color2": "#E25822",
+   "image": "assets/dyes/radiant/31.png"
+  },
+  {
+   "name": "Radiant Slate-Dusk",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#708090",
+   "color2": "#6A5ACD",
+   "image": "assets/dyes/radiant/32.png"
+  },
+  {
+   "name": "Radiant Silver-Midnight",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#C0C0C0",
+   "color2": "#191970",
+   "image": "assets/dyes/radiant/33.png"
+  },
+  {
+   "name": "Radiant Charcoal-Crimson",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#36454F",
+   "color2": "#DC143C",
+   "image": "assets/dyes/radiant/34.png"
+  },
+  {
+   "name": "Radiant Plum-Scarlet",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#8E4585",
+   "color2": "#FF2400",
+   "image": "assets/dyes/radiant/35.png"
+  },
+  {
+   "name": "Radiant Lavender-Tangerine",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#B57EDC",
+   "color2": "#FF8C1A",
+   "image": "assets/dyes/radiant/36.png"
+  },
+  {
+   "name": "Radiant Peach-Amber",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#FFAB91",
+   "color2": "#FFBF00",
+   "image": "assets/dyes/radiant/37.png"
+  },
+  {
+   "name": "Radiant Coral-Lemon",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#FF7F50",
+   "color2": "#FFF44F",
+   "image": "assets/dyes/radiant/38.png"
+  },
+  {
+   "name": "Radiant Salmon-Lime",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#FA8072",
+   "color2": "#A4DE02",
+   "image": "assets/dyes/radiant/39.png"
+  },
+  {
+   "name": "Radiant Sand-Emerald",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#E2C27D",
+   "color2": "#2ECC71",
+   "image": "assets/dyes/radiant/40.png"
+  },
+  {
+   "name": "Radiant Chocolate-Jade",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#7B3F00",
+   "color2": "#00A86B",
+   "image": "assets/dyes/radiant/41.png"
+  },
+  {
+   "name": "Radiant Mocha-Teal",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#967969",
+   "color2": "#008080",
+   "image": "assets/dyes/radiant/42.png"
+  },
+  {
+   "name": "Radiant Ivory-Turquoise",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#F5F0DC",
+   "color2": "#30D5C8",
+   "image": "assets/dyes/radiant/43.png"
+  },
+  {
+   "name": "Radiant Pearl-Cyan",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#EAE0C8",
+   "color2": "#00E5FF",
+   "image": "assets/dyes/radiant/44.png"
+  },
+  {
+   "name": "Radiant Lilac-Sky",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#C8A2C8",
+   "color2": "#4FC3F7",
+   "image": "assets/dyes/radiant/45.png"
+  },
+  {
+   "name": "Radiant Aqua-Cobalt",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#7FFFD4",
+   "color2": "#0047AB",
+   "image": "assets/dyes/radiant/46.png"
+  },
+  {
+   "name": "Radiant Storm-Royal",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#5A6C80",
+   "color2": "#4169E1",
+   "image": "assets/dyes/radiant/47.png"
+  },
+  {
+   "name": "Radiant Ember-Indigo",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#E25822",
+   "color2": "#4B0082",
+   "image": "assets/dyes/radiant/48.png"
+  },
+  {
+   "name": "Radiant Dusk-Violet",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#6A5ACD",
+   "color2": "#8F00FF",
+   "image": "assets/dyes/radiant/49.png"
+  },
+  {
+   "name": "Radiant Midnight-Orchid",
+   "type": "any",
+   "rarity": "radiant",
+   "color": "#191970",
+   "color2": "#DA70D6",
+   "image": "assets/dyes/radiant/50.png"
+  },
+  {
+   "name": "Glowing Crimson-Slate",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#DC143C",
+   "color2": "#708090",
+   "image": "assets/dyes/glow/01.png"
+  },
+  {
+   "name": "Glowing Scarlet-Silver",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#FF2400",
+   "color2": "#C0C0C0",
+   "image": "assets/dyes/glow/02.png"
+  },
+  {
+   "name": "Glowing Tangerine-Charcoal",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#FF8C1A",
+   "color2": "#36454F",
+   "image": "assets/dyes/glow/03.png"
+  },
+  {
+   "name": "Glowing Amber-Plum",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#FFBF00",
+   "color2": "#8E4585",
+   "image": "assets/dyes/glow/04.png"
+  },
+  {
+   "name": "Glowing Lemon-Lavender",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#FFF44F",
+   "color2": "#B57EDC",
+   "image": "assets/dyes/glow/05.png"
+  },
+  {
+   "name": "Glowing Lime-Peach",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#A4DE02",
+   "color2": "#FFAB91",
+   "image": "assets/dyes/glow/06.png"
+  },
+  {
+   "name": "Glowing Emerald-Coral",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#2ECC71",
+   "color2": "#FF7F50",
+   "image": "assets/dyes/glow/07.png"
+  },
+  {
+   "name": "Glowing Jade-Salmon",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#00A86B",
+   "color2": "#FA8072",
+   "image": "assets/dyes/glow/08.png"
+  },
+  {
+   "name": "Glowing Teal-Sand",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#008080",
+   "color2": "#E2C27D",
+   "image": "assets/dyes/glow/09.png"
+  },
+  {
+   "name": "Glowing Turquoise-Chocolate",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#30D5C8",
+   "color2": "#7B3F00",
+   "image": "assets/dyes/glow/10.png"
+  },
+  {
+   "name": "Glowing Cyan-Mocha",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#00E5FF",
+   "color2": "#967969",
+   "image": "assets/dyes/glow/11.png"
+  },
+  {
+   "name": "Glowing Sky-Ivory",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#4FC3F7",
+   "color2": "#F5F0DC",
+   "image": "assets/dyes/glow/12.png"
+  },
+  {
+   "name": "Glowing Cobalt-Pearl",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#0047AB",
+   "color2": "#EAE0C8",
+   "image": "assets/dyes/glow/13.png"
+  },
+  {
+   "name": "Glowing Royal-Lilac",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#4169E1",
+   "color2": "#C8A2C8",
+   "image": "assets/dyes/glow/14.png"
+  },
+  {
+   "name": "Glowing Indigo-Aqua",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#4B0082",
+   "color2": "#7FFFD4",
+   "image": "assets/dyes/glow/15.png"
+  },
+  {
+   "name": "Glowing Violet-Storm",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#8F00FF",
+   "color2": "#5A6C80",
+   "image": "assets/dyes/glow/16.png"
+  },
+  {
+   "name": "Glowing Orchid-Ember",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#DA70D6",
+   "color2": "#E25822",
+   "image": "assets/dyes/glow/17.png"
+  },
+  {
+   "name": "Glowing Magenta-Dusk",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#FF00FF",
+   "color2": "#6A5ACD",
+   "image": "assets/dyes/glow/18.png"
+  },
+  {
+   "name": "Glowing Rose-Midnight",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#FF66B2",
+   "color2": "#191970",
+   "image": "assets/dyes/glow/19.png"
+  },
+  {
+   "name": "Glowing Blush-Crimson",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#FFB6C1",
+   "color2": "#DC143C",
+   "image": "assets/dyes/glow/20.png"
+  },
+  {
+   "name": "Glowing Ruby-Scarlet",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#9B111E",
+   "color2": "#FF2400",
+   "image": "assets/dyes/glow/21.png"
+  },
+  {
+   "name": "Glowing Maroon-Tangerine",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#800000",
+   "color2": "#FF8C1A",
+   "image": "assets/dyes/glow/22.png"
+  },
+  {
+   "name": "Glowing Rust-Amber",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#B7410E",
+   "color2": "#FFBF00",
+   "image": "assets/dyes/glow/23.png"
+  },
+  {
+   "name": "Glowing Copper-Lemon",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#B87333",
+   "color2": "#FFF44F",
+   "image": "assets/dyes/glow/24.png"
+  },
+  {
+   "name": "Glowing Gold-Lime",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#FFD700",
+   "color2": "#A4DE02",
+   "image": "assets/dyes/glow/25.png"
+  },
+  {
+   "name": "Glowing Olive-Emerald",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#808000",
+   "color2": "#2ECC71",
+   "image": "assets/dyes/glow/26.png"
+  },
+  {
+   "name": "Glowing Moss-Jade",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#6B8E23",
+   "color2": "#00A86B",
+   "image": "assets/dyes/glow/27.png"
+  },
+  {
+   "name": "Glowing Mint-Teal",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#98FF98",
+   "color2": "#008080",
+   "image": "assets/dyes/glow/28.png"
+  },
+  {
+   "name": "Glowing Forest-Turquoise",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#228B22",
+   "color2": "#30D5C8",
+   "image": "assets/dyes/glow/29.png"
+  },
+  {
+   "name": "Glowing Ocean-Cyan",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#006994",
+   "color2": "#00E5FF",
+   "image": "assets/dyes/glow/30.png"
+  },
+  {
+   "name": "Glowing Navy-Sky",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#1F2A6B",
+   "color2": "#4FC3F7",
+   "image": "assets/dyes/glow/31.png"
+  },
+  {
+   "name": "Glowing Slate-Cobalt",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#708090",
+   "color2": "#0047AB",
+   "image": "assets/dyes/glow/32.png"
+  },
+  {
+   "name": "Glowing Silver-Royal",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#C0C0C0",
+   "color2": "#4169E1",
+   "image": "assets/dyes/glow/33.png"
+  },
+  {
+   "name": "Glowing Charcoal-Indigo",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#36454F",
+   "color2": "#4B0082",
+   "image": "assets/dyes/glow/34.png"
+  },
+  {
+   "name": "Glowing Plum-Violet",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#8E4585",
+   "color2": "#8F00FF",
+   "image": "assets/dyes/glow/35.png"
+  },
+  {
+   "name": "Glowing Lavender-Orchid",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#B57EDC",
+   "color2": "#DA70D6",
+   "image": "assets/dyes/glow/36.png"
+  },
+  {
+   "name": "Glowing Peach-Magenta",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#FFAB91",
+   "color2": "#FF00FF",
+   "image": "assets/dyes/glow/37.png"
+  },
+  {
+   "name": "Glowing Coral-Rose",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#FF7F50",
+   "color2": "#FF66B2",
+   "image": "assets/dyes/glow/38.png"
+  },
+  {
+   "name": "Glowing Salmon-Blush",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#FA8072",
+   "color2": "#FFB6C1",
+   "image": "assets/dyes/glow/39.png"
+  },
+  {
+   "name": "Glowing Sand-Ruby",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#E2C27D",
+   "color2": "#9B111E",
+   "image": "assets/dyes/glow/40.png"
+  },
+  {
+   "name": "Glowing Chocolate-Maroon",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#7B3F00",
+   "color2": "#800000",
+   "image": "assets/dyes/glow/41.png"
+  },
+  {
+   "name": "Glowing Mocha-Rust",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#967969",
+   "color2": "#B7410E",
+   "image": "assets/dyes/glow/42.png"
+  },
+  {
+   "name": "Glowing Ivory-Copper",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#F5F0DC",
+   "color2": "#B87333",
+   "image": "assets/dyes/glow/43.png"
+  },
+  {
+   "name": "Glowing Pearl-Gold",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#EAE0C8",
+   "color2": "#FFD700",
+   "image": "assets/dyes/glow/44.png"
+  },
+  {
+   "name": "Glowing Lilac-Olive",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#C8A2C8",
+   "color2": "#808000",
+   "image": "assets/dyes/glow/45.png"
+  },
+  {
+   "name": "Glowing Aqua-Moss",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#7FFFD4",
+   "color2": "#6B8E23",
+   "image": "assets/dyes/glow/46.png"
+  },
+  {
+   "name": "Glowing Storm-Mint",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#5A6C80",
+   "color2": "#98FF98",
+   "image": "assets/dyes/glow/47.png"
+  },
+  {
+   "name": "Glowing Ember-Forest",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#E25822",
+   "color2": "#228B22",
+   "image": "assets/dyes/glow/48.png"
+  },
+  {
+   "name": "Glowing Dusk-Ocean",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#6A5ACD",
+   "color2": "#006994",
+   "image": "assets/dyes/glow/49.png"
+  },
+  {
+   "name": "Glowing Midnight-Navy",
+   "type": "any",
+   "rarity": "glow",
+   "color": "#191970",
+   "color2": "#1F2A6B",
+   "image": "assets/dyes/glow/50.png"
+  }
+ ]
+}

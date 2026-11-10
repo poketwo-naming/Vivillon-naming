@@ -33,30 +33,31 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
     def catalog(self) -> None:
         (self.root / "dyes.json").write_text(json.dumps({"dyes": [
             {"name": "Pink", "type": "background", "rarity": "normal", "color": "#FF88CC"},
-            {"name": "Radiant", "type": "frame", "rarity": "radiant", "color": "#FFD700"},
+            {"name": "Radiant", "type": "any", "rarity": "radiant", "color": "#FFD700", "color2": "#FF00FF"},
+            {"name": "Glow", "type": "any", "rarity": "glow", "color": "#00FFFF", "color2": "#FF00FF"},
         ]}), encoding="utf-8")
 
     async def test_level_boundaries_and_xp_persistence(self) -> None:
         self.assertEqual([level_for_xp(x) for x in (0, 499, 500, 1099, 1100)], [0, 0, 1, 1, 2])
-        with patch("pokeball_drops.random.randrange", side_effect=[100, 0]), patch("pokeball_drops.random.randint", return_value=500):
+        with patch("pokeball_drops.random.randrange", side_effect=[1, 1, 1, 0]), patch("pokeball_drops.random.randint", return_value=500):
             self.assertIn("level 1", self.drops.award(1))
         loaded = PokeballDrops(self.bot, self.drops.path, self.drops.catalog_path, save_profile_inventory)
         self.assertEqual(loaded.level(1), 1)
 
     async def test_coins_and_unlucky_zero(self) -> None:
-        with patch("pokeball_drops.random.randrange", side_effect=[100, 1]), patch("pokeball_drops.random.randint", return_value=1000):
+        with patch("pokeball_drops.random.randrange", side_effect=[1, 1, 1, 1]), patch("pokeball_drops.random.randint", return_value=1000):
             self.assertIn("1,000", self.drops.award(1))
         self.assertEqual(self.bot.profile_inventory["1"]["balances"]["Pokédollar"], 1000)
         self.assertTrue(self.bot.profile_inventory_path.is_file())
-        with patch("pokeball_drops.random.randrange", side_effect=[100, 0]), patch("pokeball_drops.random.randint", return_value=0):
+        with patch("pokeball_drops.random.randrange", side_effect=[1, 1, 1, 0]), patch("pokeball_drops.random.randint", return_value=0):
             self.assertIn("unlucky", self.drops.award(1))
 
     async def test_rare_roll_boundaries_and_missing_catalog(self) -> None:
         self.catalog()
-        for roll, rarity in [(0, "radiant"), (1, "radiant"), (2, "normal"), (16, "normal")]:
-            with patch("pokeball_drops.random.randrange", side_effect=[roll, roll]), patch("pokeball_drops.random.choice", side_effect=lambda values: values[0]):
+        for rolls, rarity in [([0, 5], "glow"), ([1, 0, 6], "radiant"), ([1, 1, 0, 7], "normal")]:
+            with patch("pokeball_drops.random.randrange", side_effect=rolls), patch("pokeball_drops.random.choice", side_effect=lambda values: values[0]):
                 self.assertIn(rarity, self.drops.award(1))
-        self.assertEqual(len(self.drops.data["users"]["1"]["dyes"]), 4)
+        self.assertEqual(len(self.drops.data["users"]["1"]["dyes"]), 3)
         (self.root / "dyes.json").unlink()
         with patch("pokeball_drops.random.randrange", side_effect=[0, 0]), patch("pokeball_drops.random.randint", return_value=1):
             self.assertIn("1 XP", self.drops.award(2))
@@ -68,7 +69,7 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
             {"code": "BBBBBBB", "type": "background", "key": "cosmog"},
             {"code": "CCCCCCC", "type": "frame", "key": "mystic"},
         ]}}
-        with patch("pokeball_drops.random.randrange", side_effect=[2, 1]), patch("pokeball_drops.random.choice", side_effect=lambda values: values[0]):
+        with patch("pokeball_drops.random.randrange", side_effect=[1, 1, 0, 1]), patch("pokeball_drops.random.choice", side_effect=lambda values: values[0]):
             self.drops.award(1)
         code = self.drops.data["users"]["1"]["dyes"][0]["code"]
         message = Mock()
@@ -201,12 +202,41 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         log_channel.send.assert_awaited_once()
         self.assertEqual(log_channel.send.await_args.kwargs["view"].children[0].url, drop.jump_url)
 
-    async def test_invalid_radiant_background_rejected(self) -> None:
+    async def test_invalid_dye_rarity_rejected(self) -> None:
         (self.root / "dyes.json").write_text(json.dumps({"dyes": [
-            {"name": "Bad", "type": "background", "rarity": "radiant", "color": "#FFFFFF"},
+            {"name": "Bad", "type": "background", "rarity": "mythic", "color": "#FFFFFF"},
         ]}), encoding="utf-8")
         with self.assertRaises(ValueError):
             load_dyes(self.root / "dyes.json")
+
+    async def test_shipped_catalog_is_valid(self) -> None:
+        dyes = load_dyes(Path(__file__).with_name("data") / "dyes.json")
+        for rarity in ("normal", "radiant", "glow"):
+            self.assertEqual(sum(dye["rarity"] == rarity for dye in dyes), 50)
+        self.assertTrue(all((Path(__file__).parent / dye["image"]).is_file() for dye in dyes))
+
+    async def test_universal_dye_is_consumed_and_listed_as_used(self) -> None:
+        self.catalog()
+        self.bot.profile_inventory = {"1": {"balances": {}, "assets": [
+            {"code": "CCCCCCC", "type": "frame", "key": "mystic"},
+        ]}}
+        with patch("pokeball_drops.random.randrange", side_effect=[0, 1]), patch("pokeball_drops.random.choice", side_effect=lambda values: values[0]):
+            self.drops.award(1)
+        code = self.drops.data["users"]["1"]["dyes"][0]["code"]
+        message = Mock()
+        message.author.id = 1
+        message.reply = AsyncMock()
+        message.content = f"v!dye {code} CCCCCCC"
+        await self.drops.dye(message)
+        user = self.drops.data["users"]["1"]
+        self.assertEqual(user["dyes"], [])
+        self.assertEqual(user["used"][0]["code"], code)
+        message.content = "v!useddyes"
+        await self.drops.used_dyes(message)
+        embed = message.reply.await_args.kwargs["embed"]
+        self.assertEqual(embed.title, "Used dyes")
+        self.assertEqual(embed.image.url, "attachment://dyes.png")
+        PokeballDrops(self.bot, self.drops.path, self.drops.catalog_path, save_profile_inventory)
 
     async def test_category_configuration_requires_permission_and_persists(self) -> None:
         message = Mock()
@@ -342,7 +372,8 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         interaction = Mock()
         interaction.response.edit_message = AsyncMock()
         await view.next.callback(interaction)
-        self.assertIn("000000A", view.embed().description)
+        self.assertEqual(view.items()[0]["code"], "000000A")
+        self.assertIn("000000A", view.file().description)
         self.assertTrue(view.next.disabled)
 
     async def test_profile_avatar_and_dye_render(self) -> None:
@@ -362,7 +393,7 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         normal = render_profile_image(settings, PROFILE_STAT_DEFAULTS)
         radiant = render_profile_image(
             settings, PROFILE_STAT_DEFAULTS,
-            dyes={"frame": {"color": "#FF88CC", "rarity": "radiant"}},
+            dyes={"frame": {"color": "#FF88CC", "rarity": "glow", "color2": "#00FFFF"}},
         )
         with Image.open(normal) as original, Image.open(radiant) as dyed:
             self.assertEqual(original.size, dyed.size)

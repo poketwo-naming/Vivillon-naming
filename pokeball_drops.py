@@ -2,6 +2,7 @@
 
 import asyncio
 import copy
+import io
 import json
 import logging
 import random
@@ -17,6 +18,13 @@ INTERVAL = 180
 BALL_LIFETIME = 10
 BALL_IMAGE = Path(__file__).with_name("assets") / "drop_pokeball.png"
 POKEBALL_DROP_ROLE_ID = 1569492287732449411
+# A drop is 1 in N per Pokéball; each rarity is the midpoint of the requested range.
+DYE_ODDS = (("glow", 75000), ("radiant", 37500), ("normal", 17500))
+DYE_TYPES = ("any", "frame", "background")
+DYE_RARITIES = ("normal", "radiant", "glow")
+HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+DYE_REQUIRED = {"name", "type", "rarity", "color"}
+DYE_OPTIONAL = {"color2", "image"}
 
 
 def level_for_xp(xp: int) -> int:
@@ -47,6 +55,17 @@ def write_json(path: Path, data: Any) -> None:
         raise ValueError(f"Could not save Pokéball data to {path}") from error
 
 
+def valid_dye_fields(dye: dict[str, Any]) -> bool:
+    return (
+        isinstance(dye["name"], str) and bool(dye["name"].strip())
+        and dye["type"] in DYE_TYPES
+        and dye["rarity"] in DYE_RARITIES
+        and isinstance(dye["color"], str) and HEX_COLOR.fullmatch(dye["color"]) is not None
+        and ("color2" not in dye or isinstance(dye["color2"], str) and HEX_COLOR.fullmatch(dye["color2"]) is not None)
+        and ("image" not in dye or isinstance(dye["image"], str) and bool(dye["image"]))
+    )
+
+
 def load_dyes(path: Path) -> list[dict[str, str]]:
     data = read_json(path, {"dyes": []})
     if not isinstance(data, dict) or set(data) != {"dyes"} or not isinstance(data["dyes"], list):
@@ -56,15 +75,9 @@ def load_dyes(path: Path) -> list[dict[str, str]]:
     for dye in data["dyes"]:
         if (
             not isinstance(dye, dict)
-            or set(dye) != {"name", "type", "rarity", "color"}
-            or not isinstance(dye["name"], str)
-            or not dye["name"].strip()
+            or not DYE_REQUIRED <= set(dye) <= DYE_REQUIRED | DYE_OPTIONAL
+            or not valid_dye_fields(dye)
             or dye["name"] in seen
-            or dye["type"] not in ("frame", "background")
-            or dye["rarity"] not in ("normal", "radiant")
-            or dye["rarity"] == "radiant" and dye["type"] != "frame"
-            or not isinstance(dye["color"], str)
-            or re.fullmatch(r"#[0-9a-fA-F]{6}", dye["color"]) is None
         ):
             raise ValueError(f"Invalid dye definition in {path}")
         seen.add(dye["name"])
@@ -106,16 +119,20 @@ class PokeballDrops:
             if (
                 not isinstance(user_id, str) or not user_id.isdecimal()
                 or not isinstance(user, dict)
-                or set(user) not in ({"xp", "dyes", "applied"}, {"xp", "dyes", "applied", "selected"})
+                or not {"xp", "dyes", "applied"} <= set(user) <= {"xp", "dyes", "applied", "selected", "used"}
                 or not isinstance(user["xp"], int) or isinstance(user["xp"], bool) or user["xp"] < 0
                 or not isinstance(user["dyes"], list)
                 or not isinstance(user["applied"], dict)
                 or not isinstance(user.get("selected", {}), dict)
+                or not isinstance(user.get("used", []), list)
             ):
                 raise ValueError(f"Invalid Pokéball user in {path}")
             for dye in user["dyes"]:
                 if not self.valid_owned_dye(dye):
                     raise ValueError(f"Invalid owned dye in {path}")
+            for dye in user.get("used", []):
+                if not self.valid_owned_dye(dye, used=True):
+                    raise ValueError(f"Invalid used dye in {path}")
             for code, dye in user["applied"].items():
                 if not isinstance(code, str) or not self.valid_owned_dye(dye):
                     raise ValueError(f"Invalid applied dye in {path}")
@@ -131,16 +148,17 @@ class PokeballDrops:
         self.last_spawn: dict[int, float] = {}
 
     @staticmethod
-    def valid_owned_dye(dye: Any) -> bool:
+    def valid_owned_dye(dye: Any, used: bool = False) -> bool:
+        if not isinstance(dye, dict):
+            return False
+        required = DYE_REQUIRED | {"code"} | ({"used_on"} if used else set())
+        optional = DYE_OPTIONAL | ({"used_on"} if not used else set())
+        if not required <= set(dye) <= required | optional:
+            return False
         return (
-            isinstance(dye, dict)
-            and set(dye) == {"code", "name", "type", "rarity", "color"}
-            and isinstance(dye["code"], str) and re.fullmatch(r"[A-Z0-9]{7}", dye["code"]) is not None
-            and isinstance(dye["name"], str) and bool(dye["name"])
-            and dye["type"] in ("frame", "background")
-            and dye["rarity"] in ("normal", "radiant")
-            and not (dye["rarity"] == "radiant" and dye["type"] != "frame")
-            and isinstance(dye["color"], str) and re.fullmatch(r"#[0-9a-fA-F]{6}", dye["color"]) is not None
+            isinstance(dye["code"], str) and re.fullmatch(r"[A-Z0-9]{7}", dye["code"]) is not None
+            and valid_dye_fields(dye)
+            and ("used_on" not in dye or isinstance(dye["used_on"], str) and re.fullmatch(r"[A-Z0-9]{7}", dye["used_on"]) is not None)
         )
 
     def save(self, data: dict[str, Any]) -> None:
@@ -285,8 +303,7 @@ class PokeballDrops:
 
     def award(self, user_id: int) -> str:
         dyes = load_dyes(self.catalog_path)
-        roll = random.randrange(15000)
-        rarity = "radiant" if roll < 2 else "normal" if roll < 17 else None
+        rarity = next((name for name, odds in DYE_ODDS if random.randrange(odds) == 0), None)
         choices = [dye for dye in dyes if dye["rarity"] == rarity]
         if choices:
             data = copy.deepcopy(self.data)
@@ -300,7 +317,7 @@ class PokeballDrops:
             dye = {**random.choice(choices), "code": code}
             user["dyes"].append(dye)
             self.save(data)
-            return f"found a **{dye['rarity']} {dye['type']} dye: {dye['name']}** (`{code}`)!"
+            return f"found a **{dye['rarity']} dye: {dye['name']}** (`{code}`)!"
         if random.randrange(2) == 0:
             amount = random.randint(0, 500)
             data = copy.deepcopy(self.data)
@@ -419,8 +436,13 @@ class PokeballDrops:
     async def dye_inventory(self, message: discord.Message) -> None:
         user = self.data["users"].get(str(message.author.id), {})
         dyes = user.get("dyes", [])
-        view = DyeInventoryView(message.author.id, dyes)
-        await message.reply(embed=view.embed(), view=view, mention_author=False)
+        view = DyeInventoryView(message.author.id, dyes, "Dye inventory")
+        await message.reply(embed=view.embed(), file=view.file(), view=view, mention_author=False)
+
+    async def used_dyes(self, message: discord.Message) -> None:
+        user = self.data["users"].get(str(message.author.id), {})
+        view = DyeInventoryView(message.author.id, user.get("used", []), "Used dyes", used=True)
+        await message.reply(embed=view.embed(), file=view.file(), view=view, mention_author=False)
 
     async def dye(self, message: discord.Message) -> None:
         match = re.fullmatch(r"v!dye\s+([a-z0-9]{7})\s+([a-z0-9]{7})\s*", message.content, re.I)
@@ -436,12 +458,13 @@ class PokeballDrops:
         if dye is None or asset is None:
             await message.reply("I couldn't find that dye and owned asset. Check `v!dyeinv` and `v!inv`.", mention_author=False)
             return
-        if asset["type"] != dye["type"]:
+        if dye["type"] not in ("any", asset["type"]) or asset["type"] not in ("frame", "background"):
             await message.reply("That dye doesn't match the asset type.", mention_author=False)
             return
         user["dyes"].remove(dye)
         user["applied"].pop(asset_code, None)
         user["applied"][asset_code] = dye
+        user.setdefault("used", []).append({**dye, "used_on": asset_code})
         user.setdefault("selected", {})[asset["type"]] = asset_code
         self.save(data)
         await message.reply(f"Dye applied! Use `v!equip {asset_code}` to wear this copy.", mention_author=False)
@@ -469,11 +492,40 @@ class PokeballDrops:
         await message.reply(f"Equipped asset `{code}` on your profile.", mention_author=False)
 
 
+def dye_list_image(dyes: list[dict[str, str]], used: bool) -> io.BytesIO:
+    from PIL import Image, ImageDraw, ImageFont
+
+    def font(size: int) -> Any:
+        try:
+            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+        except OSError:
+            return ImageFont.load_default()
+
+    row, thumb = 60, 52
+    image = Image.new("RGBA", (620, max(1, len(dyes)) * row + 10), (32, 34, 44, 255))
+    draw = ImageDraw.Draw(image)
+    root = Path(__file__).parent
+    for index, dye in enumerate(dyes):
+        y = index * row + 8
+        try:
+            cloth = Image.open(root / dye["image"]).convert("RGBA").resize((thumb, thumb), Image.LANCZOS)
+        except (KeyError, OSError):
+            cloth = Image.new("RGBA", (thumb, thumb), dye["color"])
+        image.alpha_composite(cloth, (10, y))
+        draw.text((72, y + 14), f"{dye['code']} - {dye['name'][:40]}" + (" used" if used else ""), font=font(18), fill=(240, 240, 245, 255))
+    output = io.BytesIO()
+    image.save(output, "PNG")
+    output.seek(0)
+    return output
+
+
 class DyeInventoryView(discord.ui.View):
-    def __init__(self, user_id: int, dyes: list[dict[str, str]]) -> None:
+    def __init__(self, user_id: int, dyes: list[dict[str, str]], title: str = "Dye inventory", used: bool = False) -> None:
         super().__init__(timeout=300)
         self.user_id = user_id
         self.dyes = dyes
+        self.title = title
+        self.used = used
         self.page = 0
         self.update_buttons()
 
@@ -481,10 +533,23 @@ class DyeInventoryView(discord.ui.View):
         self.previous.disabled = self.page == 0
         self.next.disabled = (self.page + 1) * 10 >= len(self.dyes)
 
+    def items(self) -> list[dict[str, str]]:
+        return self.dyes[self.page * 10:(self.page + 1) * 10]
+
+    def file(self) -> discord.File:
+        items = self.items()
+        text = "\n".join(f"{dye['code']} - {dye['name']}" + (" used" if self.used else "") for dye in items)
+        return discord.File(dye_list_image(items, self.used), filename="dyes.png", description=text[:1000] or "No dyes")
+
     def embed(self) -> discord.Embed:
-        items = self.dyes[self.page * 10:(self.page + 1) * 10]
-        lines = [f"`{dye['code']}` - {dye['name'][:100]} ({dye['rarity']} {dye['type']})" for dye in items]
-        embed = discord.Embed(title="Dye inventory", description="\n".join(lines) or "You don't have any dyes yet.", color=discord.Color.pink())
+        has_items = bool(self.items())
+        embed = discord.Embed(
+            title=self.title,
+            description=None if has_items else ("You haven't used any dyes yet." if self.used else "You don't have any dyes yet."),
+            color=discord.Color.pink(),
+        )
+        if has_items:
+            embed.set_image(url="attachment://dyes.png")
         embed.set_footer(text=f"Page {self.page + 1} of {max(1, (len(self.dyes) + 9) // 10)}")
         return embed
 
@@ -498,13 +563,13 @@ class DyeInventoryView(discord.ui.View):
     async def previous(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.page -= 1
         self.update_buttons()
-        await interaction.response.edit_message(embed=self.embed(), view=self)
+        await interaction.response.edit_message(embed=self.embed(), attachments=[self.file()], view=self)
 
     @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
     async def next(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.page += 1
         self.update_buttons()
-        await interaction.response.edit_message(embed=self.embed(), view=self)
+        await interaction.response.edit_message(embed=self.embed(), attachments=[self.file()], view=self)
 
 
 class PokeballView(discord.ui.View):
