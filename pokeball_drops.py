@@ -16,6 +16,7 @@ logger = logging.getLogger("vivillon_naming")
 INTERVAL = 180
 BALL_LIFETIME = 10
 BALL_IMAGE = Path(__file__).with_name("assets") / "drop_pokeball.png"
+POKEBALL_DROP_ROLE_ID = 1569492287732449411
 
 
 def level_for_xp(xp: int) -> int:
@@ -197,7 +198,13 @@ class PokeballDrops:
                 embed.set_thumbnail(url="attachment://pokeball.png")
                 try:
                     view.message = await channel.send(
-                        embed=embed, file=discord.File(BALL_IMAGE, filename="pokeball.png"), view=view
+                        content=f"<@&{POKEBALL_DROP_ROLE_ID}>",
+                        embed=embed,
+                        file=discord.File(BALL_IMAGE, filename="pokeball.png"),
+                        view=view,
+                        allowed_mentions=discord.AllowedMentions(
+                            roles=[discord.Object(id=POKEBALL_DROP_ROLE_ID)]
+                        ),
                     )
                     view.start_expiry()
                 except (discord.HTTPException, OSError):

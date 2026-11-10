@@ -191,7 +191,13 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
                 await self.drops.run_guild(7)
         self.assertEqual(sleep.await_args_list[0].args, (180,))
         channel.send.assert_awaited_once()
-        self.assertIsInstance(channel.send.await_args.kwargs["view"], PokeballView)
+        drop_args = channel.send.await_args.kwargs
+        self.assertEqual(drop_args["content"], "<@&1569492287732449411>")
+        self.assertEqual(
+            [role.id for role in drop_args["allowed_mentions"].roles],
+            [1569492287732449411],
+        )
+        self.assertIsInstance(drop_args["view"], PokeballView)
         log_channel.send.assert_awaited_once()
         self.assertEqual(log_channel.send.await_args.kwargs["view"].children[0].url, drop.jump_url)
 
