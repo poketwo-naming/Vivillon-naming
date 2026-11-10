@@ -4665,85 +4665,104 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(actual.tobytes(), expected.tobytes())
 
-    def test_profile_card_renders_celestial_like_approved_preview(self) -> None:
-        settings = {**self.bot.profile_settings_for_user(123), "frame": "celestial"}
+    def test_shop_frames_fit_native_profile_without_warping(self) -> None:
         stats = self.bot.profile_stats_for_user(SERVER_ID, 123)
-        with Image.open(
-            render_profile_image({**settings, "frame": "none"}, stats)
-        ) as unframed:
-            base = unframed.convert("RGBA")
-        with Image.open(
-            Path(__file__).with_name("Frames") / "celestial.png"
-        ) as source:
-            frame = source.convert("RGBA")
-        self.assertEqual(frame.size, (1635, 962))
-        left, top, right, bottom = PROFILE_FRAME_OPENINGS["celestial"]
-        card_height = bottom - top
-        card_width = round(base.width * card_height / base.height)
-        card = base.resize((card_width, card_height), Image.Resampling.LANCZOS)
-        card_x = left + (right - left - card_width) // 2
-        expected = Image.new("RGBA", frame.size, (0, 0, 0, 0))
-        expected.alpha_composite(
-            card.crop((0, 0, 1, card_height)).resize((card_x - left, card_height)),
-            (left, top),
-        )
-        expected.alpha_composite(card, (card_x, top))
-        expected.alpha_composite(
-            card.crop((card_width - 1, 0, card_width, card_height)).resize(
-                (right - card_x - card_width, card_height)
-            ),
-            (card_x + card_width, top),
-        )
-        expected.alpha_composite(frame)
+        for frame_key in ("celestial", "ocean"):
+            for backgrounds in (
+                {},
+                {"background": "cosmog", "middle_background": "cosmog"},
+            ):
+                with self.subTest(frame=frame_key, backgrounds=backgrounds):
+                    settings = {
+                        **self.bot.profile_settings_for_user(123),
+                        **backgrounds,
+                        "frame": frame_key,
+                    }
+                    with Image.open(
+                        render_profile_image(
+                            {**settings, "frame": "none"}, stats, username="Jade"
+                        )
+                    ) as unframed:
+                        card = unframed.convert("RGBA")
+                    self.assertEqual(card.size, (1400, 825))
+                    with Image.open(
+                        Path(__file__).with_name("Frames") / f"{frame_key}.png"
+                    ) as source:
+                        left, top, right, bottom = PROFILE_FRAME_OPENINGS[frame_key]
+                        scale = card.width / (right - left)
+                        self.assertLessEqual(
+                            abs((bottom - top) * scale - card.height), 1
+                        )
+                        frame = source.convert("RGBA").resize(
+                            (round(source.width * scale), round(source.height * scale)),
+                            Image.Resampling.LANCZOS,
+                        )
+                        self.assertAlmostEqual(
+                            frame.width / source.width,
+                            frame.height / source.height,
+                            delta=0.001,
+                        )
+                    x, y = round(left * scale), round(top * scale)
+                    expected = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+                    expected.alpha_composite(card, (x, y))
+                    expected.alpha_composite(frame)
+                    with Image.open(
+                        render_profile_image(settings, stats, username="Jade")
+                    ) as actual:
+                        self.assertEqual(actual.size, frame.size)
+                        self.assertEqual(actual.tobytes(), expected.tobytes())
+                        self.assertEqual(
+                            actual.getchannel("A").crop(
+                                (x, y, x + card.width, y + card.height)
+                            ).getextrema(),
+                            (255, 255),
+                        )
+                        for bounds in (
+                            (64, 245, 425, 610),
+                            (980, 245, 1290, 745),
+                            (980, 760, 1260, 790),
+                        ):
+                            a, b, c, d = bounds
+                            self.assertLessEqual(
+                                frame.getchannel("A").crop(
+                                    (x + a, y + b, x + c, y + d)
+                                ).getextrema()[1],
+                                2,
+                            )
 
-        with Image.open(render_profile_image(settings, stats)) as actual:
-            self.assertEqual(actual.tobytes(), expected.tobytes())
-            self.assertEqual(actual.getchannel("A").crop((left, top, right, bottom)).getextrema(), (255, 255))
-
-    def test_ocean_frame_fills_opening_and_anchors_profile_content(self) -> None:
-        settings = {**self.bot.profile_settings_for_user(123), "frame": "ocean"}
-        stats = self.bot.profile_stats_for_user(SERVER_ID, 123)
-        with Image.open(
-            render_profile_image({**settings, "frame": "none"}, stats, username="Jade")
-        ) as unframed:
-            card = unframed.convert("RGBA").resize((1081, 637), Image.Resampling.LANCZOS)
-        with Image.open(Path(__file__).with_name("Frames") / "ocean.png") as source:
-            frame = source.convert("RGBA")
-        expected_content = card.crop((40, 135, 200, 385))
-        expected_content.alpha_composite(frame.crop((165, 300, 325, 550)))
-        with Image.open(
-            render_profile_image(settings, stats, username="Jade")
-        ) as actual:
-            self.assertEqual(actual.size, (1619, 971))
-            self.assertEqual(actual.getchannel("A").crop((125, 165, 1496, 802)).getextrema(), (255, 255))
-            self.assertEqual(
-                actual.crop((165, 300, 325, 550)).tobytes(),
-                expected_content.tobytes(),
-            )
-            self.assertEqual(rgba_pixel(actual, (550, 400)), (41, 42, 47, 255))
-            self.assertEqual(rgba_pixel(actual, (1100, 400)), (41, 42, 47, 255))
-
-    def test_ocean_frame_uses_selected_background_and_dyes(self) -> None:
-        settings = {
-            **self.bot.profile_settings_for_user(123),
-            "background": "cosmog",
-            "frame": "ocean",
-        }
+    def test_shop_frames_use_selected_background_and_dyes(self) -> None:
         stats = self.bot.profile_stats_for_user(SERVER_ID, 123)
         dyes = {
             "background": {"color": "#FF00FF", "rarity": "normal"},
             "frame": {"color": "#FF88CC", "rarity": "normal"},
         }
-        with Image.open(render_profile_image(settings, stats)) as original:
-            normal = original.convert("RGBA")
-        with Image.open(render_profile_image(settings, stats, dyes=dyes)) as dyed:
-            self.assertEqual(dyed.size, normal.size)
-            self.assertEqual(
-                dyed.getchannel("A").crop((125, 165, 1496, 802)).getextrema(),
-                (255, 255),
-            )
-            self.assertNotEqual(dyed.getpixel((550, 400)), normal.getpixel((550, 400)))
-            self.assertNotEqual(dyed.getpixel((113, 400)), normal.getpixel((113, 400)))
+        for frame_key in ("celestial", "ocean"):
+            with self.subTest(frame=frame_key):
+                settings = {
+                    **self.bot.profile_settings_for_user(123),
+                    "background": "cosmog",
+                    "middle_background": "cosmog",
+                    "frame": frame_key,
+                }
+                left, top, right, _ = PROFILE_FRAME_OPENINGS[frame_key]
+                scale = 1400 / (right - left)
+                x, y = round(left * scale), round(top * scale)
+                with Image.open(render_profile_image(settings, stats)) as original:
+                    normal = original.convert("RGBA")
+                with Image.open(render_profile_image(settings, stats, dyes=dyes)) as dyed:
+                    self.assertEqual(dyed.size, normal.size)
+                    self.assertEqual(
+                        dyed.getchannel("A").crop((x, y, x + 1400, y + 825)).getextrema(),
+                        (255, 255),
+                    )
+                    self.assertNotEqual(
+                        dyed.getpixel((x + 220, y + 300)),
+                        normal.getpixel((x + 220, y + 300)),
+                    )
+                    self.assertNotEqual(
+                        dyed.getpixel((round(left * scale) - 5, y + 300)),
+                        normal.getpixel((round(left * scale) - 5, y + 300)),
+                    )
 
     def test_profile_card_renders_selected_moonlit_frame_at_reference_size(self) -> None:
         self.bot.set_profile_setting(PROFILE_MOONLIT_USER_ID, "frame", "moonlit")
