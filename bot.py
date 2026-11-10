@@ -288,6 +288,7 @@ PROFILE_FRAMES: Final[dict[str, tuple[str, str]]] = {
     "magic": ("Magic", "Magic profile frame"),
     "amethyst": ("Amethyst", "Amethyst profile frame"),
     "celestial": ("Celestial", "Celestial profile frame"),
+    "ocean": ("Ocean", "Ocean profile frame"),
 }
 PROFILE_FRAME_IMAGES: Final[dict[str, Path]] = {
     "mystic": Path(__file__).with_name("Frames") / "mystic.png",
@@ -300,6 +301,7 @@ PROFILE_FRAME_IMAGES: Final[dict[str, Path]] = {
     "magic": Path(__file__).with_name("Frames") / "magic.png",
     "amethyst": Path(__file__).with_name("Frames") / "amethyst.png",
     "celestial": Path(__file__).with_name("Frames") / "celestial.png",
+    "ocean": Path(__file__).with_name("Frames") / "ocean.png",
 }
 PROFILE_FRAME_OPENINGS: Final[dict[str, tuple[int, int, int, int]]] = {
     "nightflower": (74, 84, 1595, 845),
@@ -310,6 +312,7 @@ PROFILE_FRAME_OPENINGS: Final[dict[str, tuple[int, int, int, int]]] = {
     "magic": (50, 71, 1416, 866),
     "amethyst": (20, 45, 1095, 723),
     "celestial": (82, 110, 1553, 851),
+    "ocean": (125, 165, 1496, 802),
 }
 PROFILE_FRAME_SCALES: Final[dict[str, float]] = {
     "mystic": 1.0,
@@ -6363,6 +6366,7 @@ def render_profile_image(
     background_dye = (dyes or {}).get("background")
     if background_dye is not None:
         image = apply_background_dye(image, background_dye)
+    ocean_background = image.copy() if settings["frame"] == "ocean" else None
     draw = ImageDraw.Draw(image)
     middle_background_image_path = PROFILE_MIDDLE_BACKGROUND_IMAGES.get(
         middle_key
@@ -6511,7 +6515,7 @@ def render_profile_image(
                     (frame.width - width) // 2,
                     (frame.height - height) // 2,
                 )
-            elif frame_key == "celestial":
+            elif frame_key in {"celestial", "ocean"}:
                 left, top, right, bottom = opening
                 frame = frame_image.convert("RGBA")
                 profile_position = (left, top)
@@ -6555,7 +6559,7 @@ def render_profile_image(
             round(255 * (alpha / 255) ** PROFILE_FRAME_ALPHA_GAMMA)
             for alpha in range(256)
         ]
-        if frame_key != "celestial":
+        if frame_key not in {"celestial", "ocean"}:
             frame.putalpha(frame.getchannel("A").point(alpha_lut))
         frame_dye = (dyes or {}).get("frame")
         if frame_dye is not None:
@@ -6574,7 +6578,49 @@ def render_profile_image(
                 glow.alpha_composite(frame)
                 frame = glow
         framed_image = Image.new("RGBA", frame.size, (0, 0, 0, 0))
-        if frame_key == "celestial" and profile_opening_size is not None:
+        if frame_key == "ocean" and profile_opening_size is not None:
+            opening_width, opening_height = profile_opening_size
+            card_width = round(width * opening_height / height)
+            profile_card = image.convert("RGBA").resize(
+                (card_width, opening_height),
+                Image.Resampling.LANCZOS,
+            )
+            extra_width = opening_width - card_width
+            left_extra = extra_width // 2
+            right_extra = extra_width - left_extra
+            left_split = round(430 * opening_height / height)
+            right_split = round(950 * opening_height / height)
+            assert ocean_background is not None
+            backdrop = ocean_background.convert("RGBA").resize(
+                (card_width, opening_height),
+                Image.Resampling.LANCZOS,
+            )
+            x, y = profile_position
+            framed_image.alpha_composite(
+                profile_card.crop((0, 0, left_split, opening_height)), (x, y)
+            )
+            framed_image.alpha_composite(
+                backdrop.crop((left_split - 1, 0, left_split, opening_height)).resize(
+                    (left_extra, opening_height)
+                ),
+                (x + left_split, y),
+            )
+            framed_image.alpha_composite(
+                profile_card.crop((left_split, 0, right_split, opening_height)),
+                (x + left_split + left_extra, y),
+            )
+            framed_image.alpha_composite(
+                backdrop.crop((right_split, 0, right_split + 1, opening_height)).resize(
+                    (right_extra, opening_height)
+                ),
+                (x + right_split + left_extra, y),
+            )
+            framed_image.alpha_composite(
+                profile_card.crop((right_split, 0, card_width, opening_height)),
+                (x + right_split + extra_width, y),
+            )
+            profile_card = None
+        elif frame_key == "celestial" and profile_opening_size is not None:
             opening_width, opening_height = profile_opening_size
             card_width = round(width * opening_height / height)
             profile_card = image.convert("RGBA").resize(
@@ -6624,7 +6670,8 @@ def render_profile_image(
                 profile_position[0] - (profile_card.width - width) // 2,
                 profile_position[1] - (profile_card.height - height) // 2,
             )
-        framed_image.alpha_composite(profile_card, dest=card_position)
+        if profile_card is not None:
+            framed_image.alpha_composite(profile_card, dest=card_position)
         framed_image.alpha_composite(frame)
         image = framed_image
 

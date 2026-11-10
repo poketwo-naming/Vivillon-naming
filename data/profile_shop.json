@@ -1,6 +1,7 @@
 {
   "items": [
     {"type": "frame", "key": "amethyst", "price": 45000},
-    {"type": "frame", "key": "celestial", "price": 60000}
+    {"type": "frame", "key": "celestial", "price": 60000},
+    {"type": "frame", "key": "ocean", "price": 50000}
   ]
 }

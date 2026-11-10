@@ -2602,6 +2602,11 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Amethyst", populated_view.embed.description or "")
         self.assertIn("45,000 Pokédollar", populated_view.embed.description or "")
         self.assertIn("60,000 Pokédollar", populated_view.embed.description or "")
+        self.assertIn("50,000 Pokédollar", populated_view.embed.description or "")
+        self.assertIn("`v!buy frame Ocean`", populated_view.embed.description or "")
+        self.assertIn(
+            "`v!shop preview frame Ocean`", populated_view.embed.description or ""
+        )
         self.assertIn("`v!buy frame Celestial`", populated_view.embed.description or "")
         self.assertIn(
             "`v!shop preview frame Celestial`", populated_view.embed.description or ""
@@ -2616,6 +2621,10 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn(
             bot_module.profile_asset_codes()["frame:celestial"],
+            populated_view.embed.description or "",
+        )
+        self.assertNotIn(
+            bot_module.profile_asset_codes()["frame:ocean"],
             populated_view.embed.description or "",
         )
         icon_files = bot_module.profile_currency_icon_files()
@@ -2816,6 +2825,10 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
                 "type": "frame", "key": "celestial", "price": 60000,
                 "currency": bot_module.PROFILE_SHOP_CURRENCY,
             },
+            "frame:ocean": {
+                "type": "frame", "key": "ocean", "price": 50000,
+                "currency": bot_module.PROFILE_SHOP_CURRENCY,
+            },
             "background:cosmog": {
                 "type": "background", "key": "cosmog", "price": 50,
                 "currency": bot_module.PROFILE_SHOP_CURRENCY,
@@ -2837,6 +2850,7 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         cases = (
             ("v!shop preview Amethyst", "frame", "amethyst"),
             ("v!shop preview Celestial", "frame", "celestial"),
+            ("v!shop preview Ocean", "frame", "ocean"),
             ("v!shop preview background Cosmog", "background", "cosmog"),
             ("v!shop preview middlebackground cosmog", "middle_background", "cosmog"),
         )
@@ -2981,6 +2995,33 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         inventory = self.bot.profile_inventory["123"]
         self.assertEqual(inventory["balances"][currency], 0)
         self.assertEqual(self.bot.profile_settings_for_user(123)["frame"], "celestial")
+        self.assertEqual(len(inventory["assets"]), 2)
+        self.assertEqual(len({asset["code"] for asset in inventory["assets"]}), 2)
+        self.assertEqual(
+            bot_module.load_profile_inventory(self.bot.profile_inventory_path, {}),
+            self.bot.profile_inventory,
+        )
+
+    async def test_ocean_purchase_requires_50000_and_creates_unique_copies(self) -> None:
+        self.bot.profile_shop = bot_module.load_profile_shop(
+            Path(__file__).with_name("data") / "profile_shop.json"
+        )
+        currency = bot_module.PROFILE_SHOP_CURRENCY
+        self.bot.profile_inventory = {
+            "123": {"balances": {currency: 49999}, "assets": []}
+        }
+        with self.assertRaisesRegex(ValueError, "don't have enough"):
+            self.bot.buy_profile_asset(123, "frame:ocean")
+        self.assertEqual(self.bot.profile_inventory["123"]["balances"][currency], 49999)
+        self.assertEqual(self.bot.profile_inventory["123"]["assets"], [])
+        self.assertEqual(self.bot.profiles, {})
+
+        self.bot.profile_inventory["123"]["balances"][currency] = 100000
+        self.bot.buy_profile_asset(123, "frame:ocean")
+        self.bot.buy_profile_asset(123, "frame:ocean")
+        inventory = self.bot.profile_inventory["123"]
+        self.assertEqual(inventory["balances"][currency], 0)
+        self.assertEqual(self.bot.profile_settings_for_user(123)["frame"], "ocean")
         self.assertEqual(len(inventory["assets"]), 2)
         self.assertEqual(len({asset["code"] for asset in inventory["assets"]}), 2)
         self.assertEqual(
@@ -4658,6 +4699,51 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         with Image.open(render_profile_image(settings, stats)) as actual:
             self.assertEqual(actual.tobytes(), expected.tobytes())
             self.assertEqual(actual.getchannel("A").crop((left, top, right, bottom)).getextrema(), (255, 255))
+
+    def test_ocean_frame_fills_opening_and_anchors_profile_content(self) -> None:
+        settings = {**self.bot.profile_settings_for_user(123), "frame": "ocean"}
+        stats = self.bot.profile_stats_for_user(SERVER_ID, 123)
+        with Image.open(
+            render_profile_image({**settings, "frame": "none"}, stats, username="Jade")
+        ) as unframed:
+            card = unframed.convert("RGBA").resize((1081, 637), Image.Resampling.LANCZOS)
+        with Image.open(Path(__file__).with_name("Frames") / "ocean.png") as source:
+            frame = source.convert("RGBA")
+        expected_content = card.crop((40, 135, 200, 385))
+        expected_content.alpha_composite(frame.crop((165, 300, 325, 550)))
+        with Image.open(
+            render_profile_image(settings, stats, username="Jade")
+        ) as actual:
+            self.assertEqual(actual.size, (1619, 971))
+            self.assertEqual(actual.getchannel("A").crop((125, 165, 1496, 802)).getextrema(), (255, 255))
+            self.assertEqual(
+                actual.crop((165, 300, 325, 550)).tobytes(),
+                expected_content.tobytes(),
+            )
+            self.assertEqual(rgba_pixel(actual, (550, 400)), (41, 42, 47, 255))
+            self.assertEqual(rgba_pixel(actual, (1100, 400)), (41, 42, 47, 255))
+
+    def test_ocean_frame_uses_selected_background_and_dyes(self) -> None:
+        settings = {
+            **self.bot.profile_settings_for_user(123),
+            "background": "cosmog",
+            "frame": "ocean",
+        }
+        stats = self.bot.profile_stats_for_user(SERVER_ID, 123)
+        dyes = {
+            "background": {"color": "#FF00FF", "rarity": "normal"},
+            "frame": {"color": "#FF88CC", "rarity": "normal"},
+        }
+        with Image.open(render_profile_image(settings, stats)) as original:
+            normal = original.convert("RGBA")
+        with Image.open(render_profile_image(settings, stats, dyes=dyes)) as dyed:
+            self.assertEqual(dyed.size, normal.size)
+            self.assertEqual(
+                dyed.getchannel("A").crop((125, 165, 1496, 802)).getextrema(),
+                (255, 255),
+            )
+            self.assertNotEqual(dyed.getpixel((550, 400)), normal.getpixel((550, 400)))
+            self.assertNotEqual(dyed.getpixel((113, 400)), normal.getpixel((113, 400)))
 
     def test_profile_card_renders_selected_moonlit_frame_at_reference_size(self) -> None:
         self.bot.set_profile_setting(PROFILE_MOONLIT_USER_ID, "frame", "moonlit")
@@ -9715,6 +9801,7 @@ class ProfileShopDataTests(unittest.TestCase):
         )
         self.assertEqual(shop_items["frame:amethyst"]["price"], 45000)
         self.assertEqual(shop_items["frame:celestial"]["price"], 60000)
+        self.assertEqual(shop_items["frame:ocean"]["price"], 50000)
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
