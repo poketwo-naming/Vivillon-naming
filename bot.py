@@ -118,6 +118,10 @@ PROFILE_BUY_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^v!buy(?:\s+(.+?))?\s*$",
     re.IGNORECASE,
 )
+PROFILE_SHOP_PREVIEW_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^v!shop\s+preview(?:\s+(.+?))?\s*$",
+    re.IGNORECASE,
+)
 PROFILE_BACKFILL_COMMAND_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^v!backfill(?:\s+(?P<stop>stop)"
     r"|\s+continue\s+(?P<continue_from><#\d+>|\d+)"
@@ -6720,16 +6724,16 @@ class ProfileShopView(discord.ui.View):
         if not page_items:
             embed.description = f"No {PROFILE_SHOP_CATEGORIES[self.category].lower()} are in the shop yet."
         else:
-            codes = profile_asset_codes()
             lines = []
             for asset_id, item in page_items:
-                code = codes[asset_id]
                 name = profile_asset_display(asset_id)
                 price = int(item["price"])
                 currency = str(item["currency"])
+                category = str(item["type"]).replace("_", " ")
                 lines.append(
-                    f"**{code} - {name}** ({price:,} {currency})\n"
-                    f"`v!buy {code}`"
+                    f"**{name}** ({price:,} {currency})\n"
+                    f"`v!buy {category} {name}` | "
+                    f"`v!shop preview {category} {name}`"
                 )
             embed.description = "\n\n".join(lines)
         embed.set_footer(text=f"Page {self.page + 1} of {page_count}")
@@ -6892,7 +6896,10 @@ class ProfilePurchaseView(discord.ui.View):
             return
         self.completed = True
         await interaction.response.edit_message(
-            content=f"Purchased **{name}** and equipped it on your profile.",
+            content=(
+                f"Purchased **{name}** and equipped it on your profile. "
+                "Find this copy's unique code in `v!inv`."
+            ),
             embed=None,
             view=None,
         )
@@ -7450,21 +7457,27 @@ class NamingBot(commands.Bot):
                 choices.pop(str(item["key"]), None)
         return choices
 
-    def profile_shop_item_for_query(
+    def profile_shop_items_for_query(
         self,
         query: str,
-    ) -> tuple[str, dict[str, str | int]] | None:
+    ) -> list[tuple[str, dict[str, str | int]]]:
         normalized_query = unicodedata.normalize("NFC", query).strip().casefold()
-        codes = profile_asset_codes()
         matches = []
         for asset_id, item in self.profile_shop.items():
             setting = str(item["type"])
             key = str(item["key"])
-            label = PROFILE_SETTING_CHOICES[setting][key][0]
-            code = codes[asset_id]
-            if normalized_query in {code.casefold(), label.casefold(), key.casefold()}:
+            label = unicodedata.normalize(
+                "NFC", PROFILE_SETTING_CHOICES[setting][key][0]
+            ).casefold()
+            category = setting.replace("_", " ")
+            names = {label, key.casefold()}
+            if normalized_query in names or any(
+                normalized_query == f"{prefix} {name}"
+                for prefix in {category, setting, category.replace(" ", "")}
+                for name in names
+            ):
                 matches.append((asset_id, item))
-        return matches[0] if len(matches) == 1 else None
+        return matches
 
     def buy_profile_asset(self, user_id: int, asset_id: str) -> str:
         item = self.profile_shop.get(asset_id)
@@ -8942,7 +8955,7 @@ class NamingBot(commands.Bot):
                     logger.exception("Could not equip profile asset")
                     await message.reply("I couldn't equip that asset. Check the bot logs.", mention_author=False)
                 return
-            if re.fullmatch(r"v!shop\s*", message.content, re.IGNORECASE):
+            if re.match(r"^v!shop(?:\s|$)", message.content, re.IGNORECASE):
                 await self.handle_profile_shop_command(message)
                 return
             if re.fullmatch(r"v!inv\s*", message.content, re.IGNORECASE):
@@ -9782,6 +9795,65 @@ class NamingBot(commands.Bot):
         if message.guild is None:
             await message.reply("The profile shop is only available in a server.", mention_author=False)
             return
+        if not re.fullmatch(r"v!shop\s*", message.content, re.IGNORECASE):
+            match = PROFILE_SHOP_PREVIEW_PATTERN.fullmatch(message.content)
+            query = match.group(1).strip() if match and match.group(1) else ""
+            if not query:
+                await message.reply(
+                    "Usage: `v!shop preview <asset name>`.",
+                    mention_author=False,
+                )
+                return
+            matches = self.profile_shop_items_for_query(query)
+            if len(matches) != 1:
+                await message.reply(
+                    "I couldn't find one matching shop item. Use its name from "
+                    "`v!shop`; if names match, include `frame`, `background`, "
+                    "or `middle background` before the name.",
+                    mention_author=False,
+                )
+                return
+            asset_id, item = matches[0]
+            setting = str(item["type"])
+            key = str(item["key"])
+            if key not in profile_setting_choices_for_user(message.author.id, setting):
+                await message.reply(
+                    "This profile asset is not available to your account.",
+                    mention_author=False,
+                )
+                return
+            settings = self.profile_settings_for_user(message.author.id)
+            settings[setting] = key
+            dyes = self.pokeball_drops.appearance(message.author.id, settings)
+            dyes.pop(setting, None)
+            try:
+                avatar = await message.author.display_avatar.read()
+            except (discord.HTTPException, aiohttp.ClientError):
+                logger.warning(
+                    "Could not fetch profile avatar for %s",
+                    message.author.id,
+                    exc_info=True,
+                )
+                avatar = None
+            profile_file = discord.File(
+                render_profile_image(
+                    settings,
+                    self.profile_stats_for_user(message.guild.id, message.author.id),
+                    await self.load_profile_emoji_assets(),
+                    self.profile_records_for_user(message.guild.id, message.author.id),
+                    username=message.author.display_name,
+                    avatar=avatar,
+                    level=self.pokeball_drops.level(message.author.id),
+                    dyes=dyes,
+                ),
+                filename="profile-preview.png",
+            )
+            await message.reply(
+                content=f"Shop preview: **{profile_asset_display(asset_id)}** (not purchased or equipped).",
+                file=profile_file,
+                mention_author=False,
+            )
+            return
         view = ProfileShopView(self, message.author.id)
         response = await message.reply(
             embed=view.embed,
@@ -9815,26 +9887,27 @@ class NamingBot(commands.Bot):
         query = match.group(1).strip() if match and match.group(1) else None
         if not query:
             await message.reply(
-                "Usage: `v!buy <asset name or code>`.",
+                "Usage: `v!buy <asset name>`.",
                 mention_author=False,
             )
             return
-        found = self.profile_shop_item_for_query(query)
-        if found is None:
+        matches = self.profile_shop_items_for_query(query)
+        if len(matches) != 1:
             await message.reply(
-                "I couldn't find one matching shop item. Use its seven-character code from `v!shop`.",
+                "I couldn't find one matching shop item. Use its name from "
+                "`v!shop`; if names match, include `frame`, `background`, "
+                "or `middle background` before the name.",
                 mention_author=False,
             )
             return
-        asset_id, item = found
-        code = profile_asset_codes()[asset_id]
+        asset_id, item = matches[0]
         name = profile_asset_display(asset_id)
         price = int(item["price"])
         currency = str(item["currency"])
         view = ProfilePurchaseView(self, message.author.id, asset_id, item)
         embed = discord.Embed(
             description=(
-                f"Are you sure you want to buy **{code} - {name}** for "
+                f"Are you sure you want to buy **{name}** for "
                 f"{price:,} {currency}?"
             ),
             color=discord.Color.gold(),

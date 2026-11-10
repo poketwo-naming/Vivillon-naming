@@ -2601,6 +2601,14 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(populated_view.embed.thumbnail.url)
         self.assertIn("Amethyst", populated_view.embed.description or "")
         self.assertIn("45,000 Pokédollar", populated_view.embed.description or "")
+        self.assertIn("`v!buy frame Amethyst`", populated_view.embed.description or "")
+        self.assertIn(
+            "`v!shop preview frame Amethyst`", populated_view.embed.description or ""
+        )
+        self.assertNotIn(
+            bot_module.profile_asset_codes()["frame:amethyst"],
+            populated_view.embed.description or "",
+        )
         icon_files = bot_module.profile_currency_icon_files()
         try:
             self.assertEqual([file.filename for file in icon_files], ["pokedollar.png"])
@@ -2691,6 +2699,10 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
             "Are you sure",
             awaited_kwargs(message.reply)["embed"].description,
         )
+        self.assertNotIn(
+            bot_module.profile_asset_codes()[asset_id],
+            awaited_kwargs(message.reply)["embed"].description,
+        )
         self.assertIsNone(awaited_kwargs(message.reply)["embed"].thumbnail.url)
         interaction = Mock()
         interaction.user.id = 123
@@ -2704,6 +2716,10 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         await yes_button.callback(interaction)
 
         self.assertEqual(self.bot.profile_settings_for_user(123)["frame"], "mystic")
+        self.assertIn(
+            "unique code in `v!inv`",
+            awaited_kwargs(interaction.response.edit_message)["content"],
+        )
         self.assertEqual(
             self.bot.profile_inventory["123"]["balances"][bot_module.PROFILE_SHOP_CURRENCY],
             120,
@@ -2769,6 +2785,123 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
             bot_module.load_profile_inventory(self.bot.profile_inventory_path, {}),
             self.bot.profile_inventory,
         )
+        self.bot.profile_inventory["456"] = {
+            "balances": {bot_module.PROFILE_SHOP_CURRENCY: 80},
+            "assets": [],
+        }
+        self.bot.buy_profile_asset(456, asset_id)
+        other_code = self.bot.profile_inventory["456"]["assets"][0]["code"]
+        self.assertNotIn(other_code, {asset["code"] for asset in owned_copies})
+        self.assertEqual(
+            bot_module.load_profile_inventory(self.bot.profile_inventory_path, {}),
+            self.bot.profile_inventory,
+        )
+
+    async def test_shop_previews_each_asset_without_changing_user_data(self) -> None:
+        self.bot.profile_shop = {
+            "frame:amethyst": {
+                "type": "frame", "key": "amethyst", "price": 45000,
+                "currency": bot_module.PROFILE_SHOP_CURRENCY,
+            },
+            "background:cosmog": {
+                "type": "background", "key": "cosmog", "price": 50,
+                "currency": bot_module.PROFILE_SHOP_CURRENCY,
+            },
+            "middle_background:cosmog": {
+                "type": "middle_background", "key": "cosmog", "price": 50,
+                "currency": bot_module.PROFILE_SHOP_CURRENCY,
+            },
+        }
+        self.bot.profile_inventory = {
+            "123": {"balances": {bot_module.PROFILE_SHOP_CURRENCY: 0}, "assets": []}
+        }
+        message = Mock()
+        message.guild.id = SERVER_ID
+        message.author.id = 123
+        message.author.display_name = "Trainer"
+        message.author.display_avatar.read = AsyncMock(return_value=None)
+        message.reply = AsyncMock()
+        cases = (
+            ("v!shop preview Amethyst", "frame", "amethyst"),
+            ("v!shop preview background Cosmog", "background", "cosmog"),
+            ("v!shop preview middlebackground cosmog", "middle_background", "cosmog"),
+        )
+        with (
+            patch.object(self.bot, "load_profile_emoji_assets", new=AsyncMock(return_value={})),
+            patch.object(bot_module, "render_profile_image", wraps=render_profile_image) as render,
+        ):
+            for command, setting, key in cases:
+                with self.subTest(command=command):
+                    message.content = command
+                    await self.bot.handle_profile_shop_command(message)
+                    kwargs = awaited_kwargs(message.reply)
+                    self.assertIn("not purchased or equipped", kwargs["content"])
+                    self.assertEqual(kwargs["file"].filename, "profile-preview.png")
+                    with Image.open(kwargs["file"].fp) as preview:
+                        self.assertGreater(preview.width, 0)
+                    kwargs["file"].close()
+                    self.assertEqual(render.call_args.args[0][setting], key)
+                    self.assertEqual(self.bot.profiles, {})
+                    self.assertEqual(self.bot.profile_inventory["123"]["assets"], [])
+                    self.assertEqual(
+                        self.bot.profile_inventory["123"]["balances"][bot_module.PROFILE_SHOP_CURRENCY],
+                        0,
+                    )
+
+    async def test_shop_name_lookup_rejects_codes_and_disambiguates_categories(self) -> None:
+        self.bot.profile_shop = {
+            f"{setting}:cosmog": {
+                "type": setting, "key": "cosmog", "price": 50,
+                "currency": bot_module.PROFILE_SHOP_CURRENCY,
+            }
+            for setting in ("background", "middle_background")
+        }
+        self.assertEqual(len(self.bot.profile_shop_items_for_query("Cosmog")), 2)
+        self.assertEqual(
+            self.bot.profile_shop_items_for_query("middle background Cosmog")[0][0],
+            "middle_background:cosmog",
+        )
+        self.assertEqual(
+            self.bot.profile_shop_items_for_query("background cosmog")[0][0],
+            "background:cosmog",
+        )
+        self.assertEqual(
+            self.bot.profile_shop_items_for_query(
+                bot_module.profile_asset_codes()["background:cosmog"]
+            ),
+            [],
+        )
+        message = Mock()
+        message.guild.id = SERVER_ID
+        message.author.id = 123
+        message.reply = AsyncMock()
+        for content in (
+            "v!shop preview Cosmog",
+            "v!buy Cosmog",
+            "v!buy " + bot_module.profile_asset_codes()["background:cosmog"],
+        ):
+            with self.subTest(content=content):
+                message.content = content
+                if content.startswith("v!buy"):
+                    await self.bot.handle_profile_buy_command(message)
+                else:
+                    await self.bot.handle_profile_shop_command(message)
+                self.assertIn("couldn't find one matching", message.reply.await_args.args[0])
+
+    async def test_shop_preview_command_is_routed(self) -> None:
+        message = Mock()
+        message.author.bot = False
+        message.author.id = 123
+        message.guild.id = SERVER_ID
+        message.channel.guild.id = SERVER_ID
+        message.content = "v!shop preview Amethyst"
+        message.embeds = []
+        message.attachments = []
+        with patch.object(
+            self.bot, "handle_profile_shop_command", new=AsyncMock()
+        ) as handler:
+            await self.bot.on_message(message)
+        handler.assert_awaited_once_with(message)
 
     async def test_purchase_with_insufficient_currency_changes_nothing(self) -> None:
         asset_id = "frame:amethyst"

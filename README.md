@@ -442,7 +442,10 @@ Profile choices and per-server totals are saved in `profile_data.json` by
 default; set `PROFILE_DATA_FILE` to use another path.
 
 Use `v!shop` to browse Frames, Backgrounds, and Middle backgrounds, and
-`v!buy <asset name or code>` to confirm a purchase. Purchased assets are added
+`v!buy <asset name>` to confirm a purchase. Use `v!shop preview <asset name>`
+to see an item on your profile without purchasing or equipping it. If items
+share a name, specify the category, such as `v!shop preview middle background
+Cosmog` or `v!buy background Cosmog`. Purchased assets are added
 to the profile, equipped immediately, and shown by `v!inv`. Existing equipped
 visual assets are migrated into their owners' inventories; profile music is not
 an inventory item. The inventory and shop catalog are stored separately in
@@ -454,9 +457,8 @@ line with its own seven-character code, even when the asset is already owned.
 Purchases are rejected when the buyer's balance is below the listed price.
 
 Add assets and prices to `profile_shop.json`. `type` is `frame`, `background`,
-or `middle_background`; `key` must match an existing profile asset key. Shop
-codes are generated automatically and remain stable per catalog item; each
-owned copy gets a separate unique code shown in `v!inv`.
+or `middle_background`; `key` must match an existing profile asset key. Each
+owned copy gets a separate unique code shown in `v!inv`, not in the shop.
 
 ```json
 {

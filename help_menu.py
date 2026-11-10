@@ -84,7 +84,8 @@ HELP_CATEGORIES: Final[list[tuple[str, list[tuple[str, str]]]]] = [
         "🛍️ Profile Shop & Inventory",
         [
             ("v!shop", "Browse frames, backgrounds, and middle backgrounds for sale."),
-            ("v!buy <asset name or code>", "Confirm a purchase and equip the profile asset."),
+            ("v!shop preview <asset name>", "Preview a shop item on your profile."),
+            ("v!buy <asset name>", "Confirm a purchase and equip the profile asset."),
             ("v!inv", "View your Pokédollar balance and owned profile assets."),
             ("v!drops [add/remove] <category ids> / v!drops list", "Manage Server: add or remove one or more category IDs for incense Pokéball drops."),
             ("v!droplog #channel / off", "Manage Server: configure or disable the Pokéball drop log."),
