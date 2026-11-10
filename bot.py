@@ -287,6 +287,7 @@ PROFILE_FRAMES: Final[dict[str, tuple[str, str]]] = {
     "jirachi": ("Jirachi", "Jirachi profile frame"),
     "magic": ("Magic", "Magic profile frame"),
     "amethyst": ("Amethyst", "Amethyst profile frame"),
+    "celestial": ("Celestial", "Celestial profile frame"),
 }
 PROFILE_FRAME_IMAGES: Final[dict[str, Path]] = {
     "mystic": Path(__file__).with_name("Frames") / "mystic.png",
@@ -298,6 +299,7 @@ PROFILE_FRAME_IMAGES: Final[dict[str, Path]] = {
     "jirachi": Path(__file__).with_name("Frames") / "jirachi.png",
     "magic": Path(__file__).with_name("Frames") / "magic.png",
     "amethyst": Path(__file__).with_name("Frames") / "amethyst.png",
+    "celestial": Path(__file__).with_name("Frames") / "celestial.png",
 }
 PROFILE_FRAME_OPENINGS: Final[dict[str, tuple[int, int, int, int]]] = {
     "nightflower": (74, 84, 1595, 845),
@@ -307,6 +309,7 @@ PROFILE_FRAME_OPENINGS: Final[dict[str, tuple[int, int, int, int]]] = {
     "jirachi": (65, 64, 1086, 699),
     "magic": (50, 71, 1416, 866),
     "amethyst": (20, 45, 1095, 723),
+    "celestial": (82, 110, 1553, 851),
 }
 PROFILE_FRAME_SCALES: Final[dict[str, float]] = {
     "mystic": 1.0,
@@ -6508,6 +6511,11 @@ def render_profile_image(
                     (frame.width - width) // 2,
                     (frame.height - height) // 2,
                 )
+            elif frame_key == "celestial":
+                left, top, right, bottom = opening
+                frame = frame_image.convert("RGBA")
+                profile_position = (left, top)
+                profile_opening_size = (right - left, bottom - top)
             elif frame_key == "amethyst":
                 left, top, right, bottom = opening
                 frame_scale = min(
@@ -6547,7 +6555,8 @@ def render_profile_image(
             round(255 * (alpha / 255) ** PROFILE_FRAME_ALPHA_GAMMA)
             for alpha in range(256)
         ]
-        frame.putalpha(frame.getchannel("A").point(alpha_lut))
+        if frame_key != "celestial":
+            frame.putalpha(frame.getchannel("A").point(alpha_lut))
         frame_dye = (dyes or {}).get("frame")
         if frame_dye is not None:
             alpha = frame.getchannel("A")
@@ -6565,7 +6574,34 @@ def render_profile_image(
                 glow.alpha_composite(frame)
                 frame = glow
         framed_image = Image.new("RGBA", frame.size, (0, 0, 0, 0))
-        if profile_opening_size is not None:
+        if frame_key == "celestial" and profile_opening_size is not None:
+            opening_width, opening_height = profile_opening_size
+            card_width = round(width * opening_height / height)
+            profile_card = image.convert("RGBA").resize(
+                (card_width, opening_height),
+                Image.Resampling.LANCZOS,
+            )
+            left_margin = (opening_width - card_width) // 2
+            right_margin = opening_width - card_width - left_margin
+            if left_margin > 0:
+                framed_image.alpha_composite(
+                    profile_card.crop((0, 0, 1, opening_height)).resize(
+                        (left_margin, opening_height)
+                    ),
+                    dest=profile_position,
+                )
+            if right_margin > 0:
+                framed_image.alpha_composite(
+                    profile_card.crop(
+                        (card_width - 1, 0, card_width, opening_height)
+                    ).resize((right_margin, opening_height)),
+                    dest=(
+                        profile_position[0] + left_margin + card_width,
+                        profile_position[1],
+                    ),
+                )
+            card_position = (profile_position[0] + left_margin, profile_position[1])
+        elif profile_opening_size is not None:
             profile_card = image.convert("RGBA").resize(
                 profile_opening_size,
                 Image.Resampling.LANCZOS,

@@ -425,7 +425,8 @@ above both background layers. The
 default picker choices are labeled **Default text color**, **Default
 background**, and **Default middle background**. The frame picker offers
 **No frame**, **Mystic**, **Gem**, and **Nightflower**. The Amethyst frame is
-available in the Frames shop for 45,000 Pokédollar. The Buneary background,
+available in the Frames shop for 45,000 Pokédollar, and the Celestial frame
+costs 60,000 Pokédollar. The Buneary background,
 Buneary middle background, and Flower Spring frame are limited to their
 designated profile; the Slakoth background, Slakoth middle background, and
 Moonlit frame are limited to a different designated profile. The Marshadow

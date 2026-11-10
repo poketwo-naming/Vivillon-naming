@@ -2601,12 +2601,21 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(populated_view.embed.thumbnail.url)
         self.assertIn("Amethyst", populated_view.embed.description or "")
         self.assertIn("45,000 Pokédollar", populated_view.embed.description or "")
+        self.assertIn("60,000 Pokédollar", populated_view.embed.description or "")
+        self.assertIn("`v!buy frame Celestial`", populated_view.embed.description or "")
+        self.assertIn(
+            "`v!shop preview frame Celestial`", populated_view.embed.description or ""
+        )
         self.assertIn("`v!buy frame Amethyst`", populated_view.embed.description or "")
         self.assertIn(
             "`v!shop preview frame Amethyst`", populated_view.embed.description or ""
         )
         self.assertNotIn(
             bot_module.profile_asset_codes()["frame:amethyst"],
+            populated_view.embed.description or "",
+        )
+        self.assertNotIn(
+            bot_module.profile_asset_codes()["frame:celestial"],
             populated_view.embed.description or "",
         )
         icon_files = bot_module.profile_currency_icon_files()
@@ -2803,6 +2812,10 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
                 "type": "frame", "key": "amethyst", "price": 45000,
                 "currency": bot_module.PROFILE_SHOP_CURRENCY,
             },
+            "frame:celestial": {
+                "type": "frame", "key": "celestial", "price": 60000,
+                "currency": bot_module.PROFILE_SHOP_CURRENCY,
+            },
             "background:cosmog": {
                 "type": "background", "key": "cosmog", "price": 50,
                 "currency": bot_module.PROFILE_SHOP_CURRENCY,
@@ -2823,6 +2836,7 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         message.reply = AsyncMock()
         cases = (
             ("v!shop preview Amethyst", "frame", "amethyst"),
+            ("v!shop preview Celestial", "frame", "celestial"),
             ("v!shop preview background Cosmog", "background", "cosmog"),
             ("v!shop preview middlebackground cosmog", "middle_background", "cosmog"),
         )
@@ -2945,6 +2959,33 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(
             "You don't have enough Pokédollar",
             awaited_kwargs(interaction.response.edit_message)["content"],
+        )
+
+    async def test_celestial_purchase_requires_60000_and_creates_unique_copies(self) -> None:
+        self.bot.profile_shop = bot_module.load_profile_shop(
+            Path(__file__).with_name("data") / "profile_shop.json"
+        )
+        currency = bot_module.PROFILE_SHOP_CURRENCY
+        self.bot.profile_inventory = {
+            "123": {"balances": {currency: 59999}, "assets": []}
+        }
+        with self.assertRaisesRegex(ValueError, "don't have enough"):
+            self.bot.buy_profile_asset(123, "frame:celestial")
+        self.assertEqual(self.bot.profile_inventory["123"]["balances"][currency], 59999)
+        self.assertEqual(self.bot.profile_inventory["123"]["assets"], [])
+        self.assertEqual(self.bot.profiles, {})
+
+        self.bot.profile_inventory["123"]["balances"][currency] = 120000
+        self.bot.buy_profile_asset(123, "frame:celestial")
+        self.bot.buy_profile_asset(123, "frame:celestial")
+        inventory = self.bot.profile_inventory["123"]
+        self.assertEqual(inventory["balances"][currency], 0)
+        self.assertEqual(self.bot.profile_settings_for_user(123)["frame"], "celestial")
+        self.assertEqual(len(inventory["assets"]), 2)
+        self.assertEqual(len({asset["code"] for asset in inventory["assets"]}), 2)
+        self.assertEqual(
+            bot_module.load_profile_inventory(self.bot.profile_inventory_path, {}),
+            self.bot.profile_inventory,
         )
 
     async def test_profile_command_sends_image_and_edit_button(self) -> None:
@@ -4582,6 +4623,41 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
                 places=3,
             )
             self.assertEqual(actual.tobytes(), expected.tobytes())
+
+    def test_profile_card_renders_celestial_like_approved_preview(self) -> None:
+        settings = {**self.bot.profile_settings_for_user(123), "frame": "celestial"}
+        stats = self.bot.profile_stats_for_user(SERVER_ID, 123)
+        with Image.open(
+            render_profile_image({**settings, "frame": "none"}, stats)
+        ) as unframed:
+            base = unframed.convert("RGBA")
+        with Image.open(
+            Path(__file__).with_name("Frames") / "celestial.png"
+        ) as source:
+            frame = source.convert("RGBA")
+        self.assertEqual(frame.size, (1635, 962))
+        left, top, right, bottom = PROFILE_FRAME_OPENINGS["celestial"]
+        card_height = bottom - top
+        card_width = round(base.width * card_height / base.height)
+        card = base.resize((card_width, card_height), Image.Resampling.LANCZOS)
+        card_x = left + (right - left - card_width) // 2
+        expected = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+        expected.alpha_composite(
+            card.crop((0, 0, 1, card_height)).resize((card_x - left, card_height)),
+            (left, top),
+        )
+        expected.alpha_composite(card, (card_x, top))
+        expected.alpha_composite(
+            card.crop((card_width - 1, 0, card_width, card_height)).resize(
+                (right - card_x - card_width, card_height)
+            ),
+            (card_x + card_width, top),
+        )
+        expected.alpha_composite(frame)
+
+        with Image.open(render_profile_image(settings, stats)) as actual:
+            self.assertEqual(actual.tobytes(), expected.tobytes())
+            self.assertEqual(actual.getchannel("A").crop((left, top, right, bottom)).getextrema(), (255, 255))
 
     def test_profile_card_renders_selected_moonlit_frame_at_reference_size(self) -> None:
         self.bot.set_profile_setting(PROFILE_MOONLIT_USER_ID, "frame", "moonlit")
@@ -9638,6 +9714,7 @@ class ProfileShopDataTests(unittest.TestCase):
             Path(__file__).with_name("data") / "profile_shop.json"
         )
         self.assertEqual(shop_items["frame:amethyst"]["price"], 45000)
+        self.assertEqual(shop_items["frame:celestial"]["price"], 60000)
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
