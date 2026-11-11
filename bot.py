@@ -3642,6 +3642,31 @@ def remove_reservation(
     updated_reservations = {
         key: list(user_ids) for key, user_ids in reservations.items()
     }
+    all_forms_prefix = "all "
+    if pokemon_name.casefold().startswith(all_forms_prefix):
+        base_name = pokemon_name[len(all_forms_prefix) :].strip()
+        guild_prefix = f"{guild_id}:"
+        removed = False
+        for key, reserved_user_ids in list(updated_reservations.items()):
+            if not key.startswith(guild_prefix):
+                continue
+            reserved_name = key.removeprefix(guild_prefix)
+            if reserved_name.startswith("*:"):
+                reserved_name = reserved_name.removeprefix("*:")
+            if not pokemon_matches_all_forms_reservation(
+                reserved_name, base_name
+            ):
+                continue
+            if user_id is None:
+                del updated_reservations[key]
+                removed = True
+            elif user_id in reserved_user_ids:
+                reserved_user_ids.remove(user_id)
+                if not reserved_user_ids:
+                    del updated_reservations[key]
+                removed = True
+        return updated_reservations, removed
+
     key = reservation_key_for_command(guild_id, pokemon_name)
     reserved_user_ids = updated_reservations.get(key)
     if reserved_user_ids is None:
@@ -11521,7 +11546,8 @@ class NamingBot(commands.Bot):
         parsed_command = parse_reserve_remove_command(message.content)
         if parsed_command is None:
             await message.reply(
-                "Usage: `v!r remove <pokemon>[, <pokemon> ...] [@member]`",
+                "Usage: `v!r remove <pokemon>[, <pokemon> ...] [@member]` "
+                "or `v!r remove all <pokemon> [@member]`",
                 mention_author=False,
             )
             return
@@ -11530,7 +11556,8 @@ class NamingBot(commands.Bot):
         expected_mentions = 1 if target_id is not None else 0
         if len(message.mentions) != expected_mentions:
             await message.reply(
-                "Usage: `v!r remove <pokemon>[, <pokemon> ...] [@member]`",
+                "Usage: `v!r remove <pokemon>[, <pokemon> ...] [@member]` "
+                "or `v!r remove all <pokemon> [@member]`",
                 mention_author=False,
             )
             return

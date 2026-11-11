@@ -8657,6 +8657,44 @@ class ReservationPersistenceTests(unittest.TestCase):
         self.assertTrue(removed)
         self.assertEqual(updated, {})
 
+    def test_removes_individually_reserved_forms_with_all_command(self) -> None:
+        reservations = {
+            reservation_key(1, "Simipour"): [123, 456],
+            reservation_key(1, "Medusa Simipour"): [123],
+            reservation_key(1, "Statue Simipour"): [456],
+            all_forms_reservation_key(1, "Simipour"): [123],
+            reservation_key(1, "Simisage"): [123],
+            reservation_key(2, "Medusa Simipour"): [123],
+        }
+
+        updated, removed = remove_reservation(
+            reservations, 1, "all simipour", 123
+        )
+
+        self.assertTrue(removed)
+        self.assertEqual(
+            updated,
+            {
+                reservation_key(1, "Simipour"): [456],
+                reservation_key(1, "Statue Simipour"): [456],
+                reservation_key(1, "Simisage"): [123],
+                reservation_key(2, "Medusa Simipour"): [123],
+            },
+        )
+
+    def test_removes_every_individual_form_reservation_with_all_command(self) -> None:
+        reservations = {
+            reservation_key(1, "Simipour"): [123],
+            reservation_key(1, "Medusa Simipour"): [456],
+            reservation_key(1, "Statue Simipour"): [789],
+            reservation_key(1, "Simisage"): [123],
+        }
+
+        updated, removed = remove_reservation(reservations, 1, "all simipour")
+
+        self.assertTrue(removed)
+        self.assertEqual(updated, {reservation_key(1, "Simisage"): [123]})
+
     def test_clears_all_reservations_for_one_guild_only(self) -> None:
         reservations = {
             reservation_key(1, "Pikachu"): [123, 456],
@@ -9096,6 +9134,30 @@ class ReserveCategoryTests(unittest.TestCase):
 
 
 class ReserveCategoryCommandTests(unittest.IsolatedAsyncioTestCase):
+    async def test_remove_all_species_forms_without_an_all_forms_reservation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            bot = SimpleNamespace(
+                reserve_categories={},
+                reservations={
+                    "1:simipour": [123],
+                    "1:medusa simipour": [456],
+                    "1:statue simipour": [123],
+                    "1:simisage": [123],
+                },
+                reserve_path=Path(directory) / "reserves.json",
+            )
+            message = Mock()
+            message.guild.id = 1
+            message.author = Mock(spec=discord.Member)
+            message.content = "v!r remove all simipour"
+            message.mentions = []
+            message.reply = AsyncMock()
+
+            await NamingBot.handle_reserve_remove(cast(NamingBot, bot), message)
+
+            self.assertEqual(bot.reservations, {"1:simisage": [123]})
+            message.reply.assert_awaited_once()
+
     async def test_member_can_view_own_reserves_without_manager_role(self) -> None:
         bot = SimpleNamespace(
             command_permissions={"1": 900},
