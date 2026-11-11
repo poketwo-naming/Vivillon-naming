@@ -142,9 +142,10 @@ SQUAWKABILLY_PLUMAGE_FORMS = (
     "White-Plumage Squawkabilly",
     "Yellow-Plumage Squawkabilly",
 )
-# Folders like "Unown Variant 3" are learned separately (so each can have its own
+# Folders like "A Unown" or "C Unown" are learned separately (so each can have its own
 # thumbnail) but the Pokémon is still named after the base species.
 VARIANT_PATTERN = re.compile(r"^(?P<base>.+?)\s+variant\s+(?P<number>\d+)$", re.IGNORECASE)
+UNOWN_LETTER_PATTERN = re.compile(r"^([A-Z]|!|\?)\s+Unown$")
 
 
 NEIGHBOURS = 6
@@ -180,14 +181,6 @@ FORM_DISPLAY_NAMES = {
     "Icy-Snow Vivillon": "Icy Snow Vivillon",
     "High-Plains Vivillon": "High Plains Vivillon",
     "Poke-Ball Vivillon": "Poké Ball Vivillon",
-    **{
-        f"Unown Variant {number}": f"{letter} Unown"
-        for number, letter in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ", 1)
-    },
-    "Unown Variant 2": "Unown B",
-    "Unown Variant 26": "Unown Z",
-    "Unown Variant 27": "Unown !",
-    "Unown Variant 28": "Unown ?",
 }
 THUMBNAIL_DIR = Path(__file__).with_name("assets") / "thumbnails"
 
