@@ -36,6 +36,7 @@ MIN_VOTES = 6
 MIN_MARGIN = 3
 SPECIES_MIN_VOTES = {
     "Boldore": 8,
+    "Crobat": 8,
     "Ditto": 4,
     "Dreepy": 4,
     "East Shellos": 8,
@@ -50,7 +51,7 @@ SPECIES_MIN_VOTES = {
     "White-Plumage Squawkabilly": 4,
     "Wiglett": 4,
     "Yamask": 4,
-    # Unown variants: simple letter shapes prone to false matches
+    # Unown base form: simple letter shapes prone to false matches
     "Unown": 8,
 }
 SPECIES_MIN_MARGIN = {"Boldore": 4, "Enchanted Applin": 2, "Milcery": 3}
