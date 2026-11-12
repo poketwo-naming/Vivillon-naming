@@ -653,6 +653,20 @@ class ReserveReportPriceTests(unittest.TestCase):
         )
         self.assertEqual(bot_module.report_spawn_form("Meowscarada: 90.00%", "Meowscarada"), "Meowscarada")
         self.assertIsNone(bot_module.report_spawn_form("Pikachu: 99.00%", "Meowscarada"))
+        self.assertIsNone(bot_module.report_spawn_form("Other Meowscarada: 90.00%", "Meowscarada"))
+        self.assertEqual(
+            bot_module.report_spawn_form("Celebi <:psychic:123> <:grass:456>: 99.63%", "Celebi"),
+            "Celebi",
+        )
+
+    def test_only_reserve_line_mentions_count(self) -> None:
+        self.assertEqual(
+            bot_module.report_reserve_pings(
+                "Celebi: 99.63%\nShinyhunt: <@999>\n"
+                "**Reserve pings:** <@111>, <@!222>\nOther: <@333>"
+            ),
+            {111, 222},
+        )
 
     def test_public_snapshot_has_real_weight_and_seasonal_filter(self) -> None:
         self.assertEqual(bot_module.report_spawn_price("Celebi", 11), 40000)
@@ -703,6 +717,7 @@ class ReserveReportCommandTests(unittest.IsolatedAsyncioTestCase):
         self.message.reply.assert_awaited_once_with("Report sent.", mention_author=False)
 
     async def test_rejects_non_reserver_fake_catch_and_own_catch(self) -> None:
+        self.bot.report_spawn_evidence = AsyncMock(return_value=[])
         await self.bot.handle_reserve_report(self.message)
         self.assertIn("don't have", self.message.reply.await_args.args[0])
         self.bot.reservations = {reservation_key(1, "Celebi"): [111]}
@@ -718,13 +733,13 @@ class ReserveReportCommandTests(unittest.IsolatedAsyncioTestCase):
     async def test_event_requires_matching_spawn_form(self) -> None:
         self.catch.content = "Congratulations <@222>! You caught a Level 5 Meowscarada!"
         self.bot.reservations = {reservation_key(1, "Oracle Meowscarada"): [111]}
-        self.bot.report_form_for_catch = AsyncMock(return_value="Witch Meowscarada")
+        self.bot.report_spawn_evidence = AsyncMock(return_value=[("Witch Meowscarada", set())])
         await self.bot.handle_reserve_report(self.message)
         self.destination.send.assert_not_awaited()
-        self.bot.report_form_for_catch.return_value = None
+        self.bot.report_spawn_evidence.return_value = []
         await self.bot.handle_reserve_report(self.message)
         self.assertIn("couldn't identify", self.message.reply.await_args.args[0])
-        self.bot.report_form_for_catch.return_value = "Oracle Meowscarada"
+        self.bot.report_spawn_evidence.return_value = [("Oracle Meowscarada", set())]
         await self.bot.handle_reserve_report(self.message)
         self.assertIn("Oracle Meowscarada\nPC: 45,000 PC", self.destination.send.await_args.args[0])
 
@@ -761,8 +776,11 @@ class ReserveReportCommandTests(unittest.IsolatedAsyncioTestCase):
         spawn.embeds = [discord.Embed(title="A wild Pokémon has appeared!")]
         reply = Mock(spec=discord.Message)
         reply.author.id = 9999
+        reply.author.bot = True
+        reply.webhook_id = None
         reply.reference.message_id = 40
         reply.content = "Oracle Meowscarada: 99.00%"
+        reply.embeds = []
         self.bot._connection.user = Mock(id=9999)
 
         async def history(**kwargs: Any):
@@ -770,8 +788,74 @@ class ReserveReportCommandTests(unittest.IsolatedAsyncioTestCase):
                 yield item
 
         self.message.channel.history = history
-        form = await self.bot.report_form_for_catch(self.message, self.catch, "Meowscarada")
-        self.assertEqual(form, "Oracle Meowscarada")
+        evidence = await self.bot.report_spawn_evidence(self.message, self.catch, "Meowscarada")
+        self.assertEqual(evidence, [("Oracle Meowscarada", set())])
+
+    async def test_other_naming_bot_reserve_ping_authorizes_report(self) -> None:
+        spawn = Mock(spec=discord.Message)
+        spawn.id = 40
+        spawn.author.id = 12345
+        spawn.content = ""
+        spawn.embeds = [discord.Embed(title="A wild Pokémon has appeared!")]
+        reply = Mock(spec=discord.Message)
+        reply.author.id = 1307910235737948252
+        reply.author.bot = True
+        reply.webhook_id = None
+        reply.reference.message_id = 40
+        reply.content = (
+            "Celebi <:psychic:123> <:grass:456>: 99.63%\n"
+            "Best name: serebi\nReserve pings: <@111>\n"
+            "Click to Copy -> `@Pokétwo c serebi`"
+        )
+        reply.embeds = []
+
+        async def history(**kwargs: Any):
+            for item in [reply] if "after" in kwargs else [spawn]:
+                yield item
+
+        self.message.channel.history = history
+        await self.bot.handle_reserve_report(self.message)
+        self.assertIn("Pokémon: Celebi\nPC: 40,000 PC", self.destination.send.await_args.args[0])
+        self.destination.send.reset_mock()
+        for field, value in (
+            ("reference", 41),
+            ("name", "Pikachu: 99.63%\nReserve pings: <@111>"),
+            ("webhook", 123),
+            ("human", False),
+        ):
+            with self.subTest(field=field):
+                reply.reference.message_id = 41 if field == "reference" else 40
+                reply.content = value if field == "name" else (
+                    "Celebi <:psychic:123> <:grass:456>: 99.63%\n"
+                    "Best name: serebi\nReserve pings: <@111>"
+                )
+                reply.webhook_id = value if field == "webhook" else None
+                reply.author.bot = value if field == "human" else True
+                await self.bot.handle_reserve_report(self.message)
+                self.destination.send.assert_not_awaited()
+
+    async def test_other_bot_requires_matching_spawn_and_reserve_ping(self) -> None:
+        self.bot.report_spawn_evidence = AsyncMock(return_value=[("Celebi", {333})])
+        await self.bot.handle_reserve_report(self.message)
+        self.destination.send.assert_not_awaited()
+        self.assertIn("don't have", self.message.reply.await_args.args[0])
+
+    async def test_other_bot_event_form_is_used_for_price(self) -> None:
+        self.catch.content = "Congratulations <@222>! You caught a Level 5 Meowscarada!"
+        self.bot.report_spawn_evidence = AsyncMock(
+            return_value=[("Oracle Meowscarada", {111})]
+        )
+        await self.bot.handle_reserve_report(self.message)
+        self.assertIn("Oracle Meowscarada\nPC: 45,000 PC", self.destination.send.await_args.args[0])
+
+    async def test_conflicting_form_identifications_are_rejected(self) -> None:
+        self.catch.content = "Congratulations <@222>! You caught a Level 5 Meowscarada!"
+        self.bot.report_spawn_evidence = AsyncMock(
+            return_value=[("Oracle Meowscarada", {111}), ("Witch Meowscarada", {111})]
+        )
+        await self.bot.handle_reserve_report(self.message)
+        self.destination.send.assert_not_awaited()
+        self.assertIn("conflicting", self.message.reply.await_args.args[0])
 
 
 class PremiumAccessTests(unittest.IsolatedAsyncioTestCase):

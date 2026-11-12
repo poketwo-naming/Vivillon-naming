@@ -3256,18 +3256,37 @@ def report_spawn_price(pokemon_name: str, month: int) -> int | None:
 
 
 def report_spawn_form(content: str, species: str) -> str | None:
-    line = content.split("\n", 1)[0]
-    match = re.search(r":\s*\d+(?:\.\d+)?%\s*$", line)
-    if match is None:
-        return None
-    prefix = line[:match.start()].casefold().rstrip()
+    line = unicodedata.normalize("NFC", content.split("\n", 1)[0])
+    line = re.sub(r"<a?:[A-Za-z0-9_~]+:\d+>", " ", line)
+    line = "".join(
+        char for char in line
+        if (unicodedata.category(char) != "So" or char in "♀♂")
+        and char not in "*`_\ufe0f"
+    ).strip()
     candidates = [species, *custom_forms_for_species(species)]
     for name in sorted(candidates, key=len, reverse=True):
-        if prefix.endswith(name.casefold()):
-            start = len(prefix) - len(name)
-            if start == 0 or not prefix[start - 1].isalnum():
-                return name
+        if re.fullmatch(
+            rf"(?:pok[eé]mon\s*:\s*)?{re.escape(name)}\s*"
+            r"(?::\s*\d+(?:\.\d+)?\s*%)?\s*",
+            line,
+            re.IGNORECASE,
+        ):
+            return name
     return None
+
+
+def report_reserve_pings(content: str) -> set[int]:
+    user_ids: set[int] = set()
+    for line in content.splitlines():
+        line = line.replace("**", "").replace("__", "")
+        match = re.match(
+            r"^\s*(?:reserve\s+pings?|reserved(?:\s+(?:by|pings?))?|reserves?)\s*:\s*(.*)$",
+            line,
+            re.IGNORECASE,
+        )
+        if match:
+            user_ids.update(int(user_id) for user_id in re.findall(r"<@!?(\d+)>", match.group(1)))
+    return user_ids
 
 
 def parse_shinyhunt_command(content: str) -> str | None:
@@ -10752,11 +10771,9 @@ class NamingBot(commands.Bot):
         )
         view.message = response
 
-    async def report_form_for_catch(
+    async def report_spawn_evidence(
         self, command: discord.Message, catch: discord.Message, species: str
-    ) -> str | None:
-        if self.user is None:
-            return None
+    ) -> list[tuple[str, set[int]]] | None:
         spawn = None
         async for previous in command.channel.history(limit=500, before=catch):
             if (
@@ -10767,16 +10784,21 @@ class NamingBot(commands.Bot):
                 break
         if spawn is None:
             return None
+        evidence: list[tuple[str, set[int]]] = []
         async for reply in command.channel.history(limit=500, after=spawn, before=command):
             if (
-                reply.author.id == self.user.id
+                reply.author.bot
+                and reply.author.id != self.config.poketwo_bot_id
+                and reply.webhook_id is None
                 and reply.reference is not None
                 and reply.reference.message_id == spawn.id
             ):
-                form = report_spawn_form(reply.content, species)
+                text = message_text(reply)
+                form = report_spawn_form(text, species)
                 if form is not None:
-                    return form
-        return None
+                    is_vivillon = self.user is not None and reply.author.id == self.user.id
+                    evidence.append((form, set() if is_vivillon else report_reserve_pings(text)))
+        return evidence
 
     async def handle_reserve_report(self, message: discord.Message) -> None:
         usage = "Reply to the Pokétwo catch message with `v!report`."
@@ -10809,30 +10831,52 @@ class NamingBot(commands.Bot):
         caught_name = re.sub(
             r"^(?:gigantamax|gmax)\s+", "", details.pokemon, flags=re.IGNORECASE
         )
-        form_name = caught_name
-        if custom_forms_for_species(caught_name):
+        has_local_reserve = message.author.id in reserved_user_ids_for_pokemon(
+            self.reservations, message.guild.id, caught_name,
+            additional_names=(details.pokemon,),
+        )
+        needs_form = bool(custom_forms_for_species(caught_name))
+        evidence: list[tuple[str, set[int]]] = []
+        if needs_form or not has_local_reserve:
             try:
-                form_name = await self.report_form_for_catch(message, catch, caught_name)
+                found_evidence = await self.report_spawn_evidence(message, catch, caught_name)
             except discord.HTTPException:
                 logger.exception("Could not read spawn history for catch %s", catch.id)
                 await message.reply(
-                    "I couldn't read the spawn history to identify the form.",
+                    "I couldn't read the spawn history to verify the reserve.",
                     mention_author=False,
                 )
                 return
-            if form_name is None:
+            if found_evidence is None:
                 await message.reply(
-                    "I couldn't identify the exact form from Vivillon's spawn reply.",
+                    "I couldn't find the corresponding spawn to verify the reserve.",
                     mention_author=False,
                 )
                 return
-        reserved_names = (caught_name, details.pokemon)
-        if message.author.id not in reserved_user_ids_for_pokemon(
-            self.reservations, message.guild.id, form_name,
-            additional_names=reserved_names,
-        ):
+            evidence = found_evidence
+        forms = {name for name, _ in evidence if name.casefold() != caught_name.casefold()}
+        if len(forms) > 1:
             await message.reply(
-                "You don't have this Pokémon reserved.", mention_author=False
+                "The naming bots gave conflicting form identifications; I can't verify this report.",
+                mention_author=False,
+            )
+            return
+        if needs_form and not evidence:
+            await message.reply(
+                "I couldn't identify the exact form from a naming bot's spawn reply.",
+                mention_author=False,
+            )
+            return
+        form_name = next(iter(forms), caught_name)
+        has_local_reserve = message.author.id in reserved_user_ids_for_pokemon(
+            self.reservations, message.guild.id, form_name,
+            additional_names=(caught_name, details.pokemon),
+        )
+        has_spawn_reserve = any(message.author.id in users for _, users in evidence)
+        if not has_local_reserve and not has_spawn_reserve:
+            await message.reply(
+                "You don't have this Pokémon reserved, or no reserve ping was found on the spawn.",
+                mention_author=False,
             )
             return
         price = report_category_price(

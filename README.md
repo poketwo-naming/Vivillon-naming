@@ -329,11 +329,16 @@ the category does not change reservations that were already expanded. The
 different persistent path.
 
 To report a stolen reserve, reply to Pokétwo's catch announcement with
-`v!report`. Only someone who currently has that Pokémon reserved can report
-another member's catch. The report is sent to <#1532512015703085147>, with a
-link to the catch and the trade thread <#1538294047095922748>. The bot needs
-permission to read message history in the catch channel and send messages in
-the report channel.
+`v!report`. Someone with a current Vivillon reservation, or named in another
+naming bot's reserve ping on that spawn, can report another member's catch.
+Other naming bots' messages must reply to the corresponding Pokétwo spawn,
+identify the Pokémon on their first line, and show user mentions on a
+`Reserve pings:` or `Reserved:` line (including in embeds). Vivillon uses
+these messages as evidence; it cannot independently verify another bot's
+reserve list. The report is sent to <#1532512015703085147>, with a link to the
+catch and the trade thread <#1538294047095922748>. The bot needs permission
+to read message history in the catch channel and send messages in the report
+channel.
 
 The server's `gmax`, `eevos`, and `paradox` reserve categories cost 35,000 PC;
 `rare`, `regional`, and `events` cost 45,000 PC. Gigantamax catches also cost
@@ -347,9 +352,10 @@ Spawn rates are estimates from the pinned
 [public Pokétwo data snapshot](https://github.com/poketwo/data/blob/c6262832f65e989176b084d13bc9e13a4d101fb9/csv/pokemon.csv);
 live rates may differ. Seasonal spawn restrictions are applied using the catch
 date. If no rate is available, the report is not sent. When a catch names only
-a species with custom forms, Vivillon uses its reply to the corresponding
-spawn to identify the form; if that reply cannot be found, the report is not
-sent. This identification is a recognition guess, not a guarantee.
+a species with custom forms, Vivillon uses naming-bot replies to the
+corresponding spawn to identify the form. If none is found, or the identified
+forms conflict, the report is not sent. This identification is a recognition
+guess, not a guarantee.
 
 Members with the reserve-manager role can remove reservations with
 `v!r remove pikachu, eevee @member` or `v!r remove pikachu, eevee, @member` to
