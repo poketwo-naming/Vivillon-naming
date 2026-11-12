@@ -4,6 +4,7 @@ import tempfile
 import time
 import unittest
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, TypeVar, cast
@@ -618,6 +619,159 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, ("Pikachu", 25.0))
         matcher.best_guess.assert_called_once_with(b"spawn image")
+
+
+class ReserveReportPriceTests(unittest.TestCase):
+    def test_spawn_rate_tier_boundaries(self) -> None:
+        tiers = bot_module.RESERVE_REPORT_PRICES
+        for index, (denominator, price) in enumerate(tiers):
+            for total, expected in (
+                (denominator, price),
+                (denominator - 1, tiers[index - 1][1] if index else 2500),
+            ):
+                with self.subTest(total=total):
+                    with patch("bot.load_report_spawn_weights", return_value=[
+                        ("Pikachu", 1, ""), ("Other", total - 1, "")
+                    ]):
+                        self.assertEqual(bot_module.report_spawn_price("Pikachu", 1), expected)
+
+    def test_category_precedence_and_exact_forms(self) -> None:
+        categories = {"1": {
+            "gmax": ["Pikachu"], "rare": ["Pikachu"],
+            "regional": ["all Sneasel"], "paradox": ["Witch Meowscarada"],
+        }}
+        self.assertEqual(bot_module.report_category_price(categories, 1, "Pikachu"), 45000)
+        self.assertEqual(bot_module.report_category_price(categories, 1, "Hisuian Sneasel"), 45000)
+        self.assertEqual(bot_module.report_category_price(categories, 1, "Witch Meowscarada"), 45000)
+        self.assertIsNone(bot_module.report_category_price(categories, 1, "Meowscarada"))
+        self.assertEqual(bot_module.report_category_price(categories, 1, "Eevee", gigantamax=True), 35000)
+
+    def test_spawn_form_uses_exact_candidate(self) -> None:
+        self.assertEqual(
+            bot_module.report_spawn_form("<:grass:123> Oracle Meowscarada: 99.00%", "Meowscarada"),
+            "Oracle Meowscarada",
+        )
+        self.assertEqual(bot_module.report_spawn_form("Meowscarada: 90.00%", "Meowscarada"), "Meowscarada")
+        self.assertIsNone(bot_module.report_spawn_form("Pikachu: 99.00%", "Meowscarada"))
+
+    def test_public_snapshot_has_real_weight_and_seasonal_filter(self) -> None:
+        self.assertEqual(bot_module.report_spawn_price("Celebi", 11), 40000)
+        with patch("bot.load_report_spawn_weights", return_value=[
+            ("Pikachu", 1, ""), ("Other", 336, "summer")
+        ]):
+            self.assertEqual(bot_module.report_spawn_price("Pikachu", 7), 5000)
+            self.assertEqual(bot_module.report_spawn_price("Pikachu", 1), 2500)
+            self.assertIsNone(bot_module.report_spawn_price("Other", 1))
+
+
+class ReserveReportCommandTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.bot = NamingBot(ConfigTests().load_config())
+        self.bot.reservations = {}
+        self.bot.reserve_categories = {}
+        self.catch = Mock(spec=discord.Message)
+        self.catch.id = 42
+        self.catch.author.id = 12345
+        self.catch.content = "Congratulations <@222>! You caught a Level 5 Celebi! (56.45%)!"
+        self.catch.embeds = []
+        self.catch.created_at = datetime(2026, 11, 1, tzinfo=timezone.utc)
+        self.catch.jump_url = "https://discord.com/channels/1/2/42"
+        self.message = Mock(spec=discord.Message)
+        self.message.guild.id = 1
+        self.message.channel.id = 2
+        self.message.author.id = 111
+        self.message.reference.channel_id = 2
+        self.message.reference.message_id = 42
+        self.message.reference.resolved = self.catch
+        self.message.reply = AsyncMock()
+        self.destination = Mock(spec=discord.TextChannel)
+        self.destination.guild.id = 1
+        self.destination.send = AsyncMock()
+        self.bot.get_channel = Mock(return_value=self.destination)
+
+    async def asyncTearDown(self) -> None:
+        await self.bot.close()
+
+    async def test_reserved_catch_sends_report_to_channel(self) -> None:
+        self.bot.reservations = {reservation_key(1, "Celebi"): [111]}
+        await self.bot.handle_reserve_report(self.message)
+        content = self.destination.send.await_args.args[0]
+        self.assertIn("<@222> hey you stole", content)
+        self.assertIn("Pokémon: Celebi\nPC: 40,000 PC", content)
+        self.assertIn("<@222> trade <@111> in <#1538294047095922748>", content)
+        self.assertIn(self.catch.jump_url, content)
+        self.message.reply.assert_awaited_once_with("Report sent.", mention_author=False)
+
+    async def test_rejects_non_reserver_fake_catch_and_own_catch(self) -> None:
+        await self.bot.handle_reserve_report(self.message)
+        self.assertIn("don't have", self.message.reply.await_args.args[0])
+        self.bot.reservations = {reservation_key(1, "Celebi"): [111]}
+        self.catch.author.id = 999
+        await self.bot.handle_reserve_report(self.message)
+        self.assertIn("Pokétwo catch", self.message.reply.await_args.args[0])
+        self.catch.author.id = 12345
+        self.message.author.id = 222
+        await self.bot.handle_reserve_report(self.message)
+        self.assertIn("own catch", self.message.reply.await_args.args[0])
+        self.destination.send.assert_not_awaited()
+
+    async def test_event_requires_matching_spawn_form(self) -> None:
+        self.catch.content = "Congratulations <@222>! You caught a Level 5 Meowscarada!"
+        self.bot.reservations = {reservation_key(1, "Oracle Meowscarada"): [111]}
+        self.bot.report_form_for_catch = AsyncMock(return_value="Witch Meowscarada")
+        await self.bot.handle_reserve_report(self.message)
+        self.destination.send.assert_not_awaited()
+        self.bot.report_form_for_catch.return_value = None
+        await self.bot.handle_reserve_report(self.message)
+        self.assertIn("couldn't identify", self.message.reply.await_args.args[0])
+        self.bot.report_form_for_catch.return_value = "Oracle Meowscarada"
+        await self.bot.handle_reserve_report(self.message)
+        self.assertIn("Oracle Meowscarada\nPC: 45,000 PC", self.destination.send.await_args.args[0])
+
+    async def test_unavailable_price_does_not_send_report(self) -> None:
+        self.bot.reservations = {reservation_key(1, "Celebi"): [111]}
+        with patch("bot.report_spawn_price", return_value=None):
+            await self.bot.handle_reserve_report(self.message)
+        self.destination.send.assert_not_awaited()
+        self.assertIn("No spawn-rate price", self.message.reply.await_args.args[0])
+
+    async def test_missing_reference_is_rejected(self) -> None:
+        self.message.reference = None
+        await self.bot.handle_reserve_report(self.message)
+        self.destination.send.assert_not_awaited()
+        self.assertIn("Reply to", self.message.reply.await_args.args[0])
+
+    async def test_on_message_routes_report_for_members(self) -> None:
+        self.message.content = "v!report"
+        self.message.embeds = []
+        self.message.author.bot = False
+        self.bot.org_rpc = None
+        self.bot.is_allowed_channel = Mock(return_value=True)
+        self.bot.track_incense_command = Mock(return_value=None)
+        self.bot.track_chat_event_message = Mock()
+        self.bot.handle_reserve_report = AsyncMock()
+        await self.bot.on_message(self.message)
+        self.bot.handle_reserve_report.assert_awaited_once_with(self.message)
+
+    async def test_find_spawn_reply_even_after_catch(self) -> None:
+        spawn = Mock(spec=discord.Message)
+        spawn.id = 40
+        spawn.author.id = 12345
+        spawn.content = ""
+        spawn.embeds = [discord.Embed(title="A wild Pokémon has appeared!")]
+        reply = Mock(spec=discord.Message)
+        reply.author.id = 9999
+        reply.reference.message_id = 40
+        reply.content = "Oracle Meowscarada: 99.00%"
+        self.bot._connection.user = Mock(id=9999)
+
+        async def history(**kwargs: Any):
+            for item in [reply] if "after" in kwargs else [spawn]:
+                yield item
+
+        self.message.channel.history = history
+        form = await self.bot.report_form_for_catch(self.message, self.catch, "Meowscarada")
+        self.assertEqual(form, "Oracle Meowscarada")
 
 
 class PremiumAccessTests(unittest.IsolatedAsyncioTestCase):

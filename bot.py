@@ -96,6 +96,18 @@ API_STATUS_WINDOW_SECONDS: Final[int] = 5 * 60
 RECOGNITION_WINDOW_SECONDS: Final[float] = 1.0
 RECOGNITION_ALERT_CHANNEL_ID: Final[int] = 1531476097970212915
 RECOGNITION_ALERT_USER_ID: Final[int] = 729509574486523907
+RESERVE_REPORT_CHANNEL_ID: Final[int] = 1532512015703085147
+RESERVE_REPORT_TRADE_THREAD_ID: Final[int] = 1538294047095922748
+RESERVE_REPORT_PRICES: Final[tuple[tuple[int, int], ...]] = (
+    (255, 2500), (337, 5000), (674, 10000), (899, 15000),
+    (1349, 20000), (3596, 30000), (5394, 35000),
+    (15196, 40000), (30000, 50000),
+)
+RESERVE_REPORT_EVENT_FORMS: Final[frozenset[str]] = frozenset({
+    "enchanted applin", "rotten applin", "oracle meowscarada",
+    "witch meowscarada", "medusa simipour", "statue simipour",
+    "elixir reuniclus", "cauldron reuniclus",
+})
 API_STATUS_COMMAND_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^v!api\s*$",
     re.IGNORECASE,
@@ -3184,6 +3196,78 @@ def reserved_user_ids_for_pokemon(
             if pokemon_matches_all_forms_reservation(candidate, reserved_name):
                 user_ids.update(reserved_user_ids)
     return sorted(user_ids)
+
+
+@lru_cache(maxsize=1)
+def load_report_spawn_weights() -> list[tuple[str, int, str]]:
+    path = Path(__file__).with_name("data") / "poketwo_spawn_weights.json"
+    with path.open(encoding="utf-8") as file:
+        data = json.load(file)
+    return [(name, weight, season) for name, weight, season in data["pokemon"]]
+
+
+def report_category_price(
+    categories: dict[str, dict[str, list[str]]],
+    guild_id: int,
+    pokemon_name: str,
+    *,
+    gigantamax: bool = False,
+) -> int | None:
+    if pokemon_name.casefold() in RESERVE_REPORT_EVENT_FORMS:
+        return 45000
+    prices = {"gmax": 35000, "eevos": 35000, "paradox": 35000,
+              "rare": 45000, "regional": 45000, "event": 45000, "events": 45000}
+    matching_prices = [35000] if gigantamax else []
+    for category, names in categories.get(str(guild_id), {}).items():
+        price = prices.get(reserve_category_storage_key(category))
+        if price is None:
+            continue
+        for name in names:
+            if name.casefold().startswith("all "):
+                matches = pokemon_matches_all_forms_reservation(pokemon_name, name[4:].strip())
+            else:
+                matches = reservation_key(guild_id, pokemon_name) == reservation_key(guild_id, name)
+            if matches:
+                matching_prices.append(price)
+                break
+    return max(matching_prices, default=None)
+
+
+def report_spawn_price(pokemon_name: str, month: int) -> int | None:
+    season = ("winter", "winter", "spring", "spring", "spring", "summer",
+              "summer", "summer", "autumn", "autumn", "autumn", "winter")[month - 1]
+    weights = [
+        (name, weight) for name, weight, restriction in load_report_spawn_weights()
+        if not restriction or restriction == season
+    ]
+    name_key = reservation_key(0, pokemon_name)
+    weight = next(
+        (weight for name, weight in weights if reservation_key(0, name) == name_key),
+        None,
+    )
+    if weight is None:
+        return None
+    total = sum(weight for _, weight in weights)
+    price = RESERVE_REPORT_PRICES[0][1]
+    for denominator, amount in RESERVE_REPORT_PRICES:
+        if total >= denominator * weight:
+            price = amount
+    return price
+
+
+def report_spawn_form(content: str, species: str) -> str | None:
+    line = content.split("\n", 1)[0]
+    match = re.search(r":\s*\d+(?:\.\d+)?%\s*$", line)
+    if match is None:
+        return None
+    prefix = line[:match.start()].casefold().rstrip()
+    candidates = [species, *custom_forms_for_species(species)]
+    for name in sorted(candidates, key=len, reverse=True):
+        if prefix.endswith(name.casefold()):
+            start = len(prefix) - len(name)
+            if start == 0 or not prefix[start - 1].isalnum():
+                return name
+    return None
 
 
 def parse_shinyhunt_command(content: str) -> str | None:
@@ -8970,6 +9054,9 @@ class NamingBot(commands.Bot):
             if PROFILE_COMMAND_PATTERN.fullmatch(message.content):
                 await self.handle_profile_command(message)
                 return
+            if re.fullmatch(r"v!report\s*", message.content, re.IGNORECASE):
+                await self.handle_reserve_report(message)
+                return
             if re.match(r"^v!droplog(?:\s|$)", message.content, re.IGNORECASE):
                 try:
                     await self.pokeball_drops.configure_log(message)
@@ -10664,6 +10751,141 @@ class NamingBot(commands.Bot):
             mention_author=False,
         )
         view.message = response
+
+    async def report_form_for_catch(
+        self, command: discord.Message, catch: discord.Message, species: str
+    ) -> str | None:
+        if self.user is None:
+            return None
+        spawn = None
+        async for previous in command.channel.history(limit=500, before=catch):
+            if (
+                previous.author.id == self.config.poketwo_bot_id
+                and SPAWN_PATTERN.search(message_text(previous))
+            ):
+                spawn = previous
+                break
+        if spawn is None:
+            return None
+        async for reply in command.channel.history(limit=500, after=spawn, before=command):
+            if (
+                reply.author.id == self.user.id
+                and reply.reference is not None
+                and reply.reference.message_id == spawn.id
+            ):
+                form = report_spawn_form(reply.content, species)
+                if form is not None:
+                    return form
+        return None
+
+    async def handle_reserve_report(self, message: discord.Message) -> None:
+        usage = "Reply to the Pokétwo catch message with `v!report`."
+        if message.guild is None or message.reference is None:
+            await message.reply(usage, mention_author=False)
+            return
+        reference = message.reference
+        if reference.channel_id != message.channel.id or reference.message_id is None:
+            await message.reply(usage, mention_author=False)
+            return
+        catch = reference.resolved
+        if not isinstance(catch, discord.Message):
+            try:
+                catch = await message.channel.fetch_message(reference.message_id)
+            except discord.HTTPException:
+                await message.reply("I couldn't read the catch message.", mention_author=False)
+                return
+        details = (
+            parse_catch_details(message_text(catch))
+            if catch.author.id == self.config.poketwo_bot_id
+            else None
+        )
+        if details is None or details.user_id is None:
+            await message.reply(usage, mention_author=False)
+            return
+        if details.user_id == message.author.id:
+            await message.reply("You can't report your own catch.", mention_author=False)
+            return
+
+        caught_name = re.sub(
+            r"^(?:gigantamax|gmax)\s+", "", details.pokemon, flags=re.IGNORECASE
+        )
+        form_name = caught_name
+        if custom_forms_for_species(caught_name):
+            try:
+                form_name = await self.report_form_for_catch(message, catch, caught_name)
+            except discord.HTTPException:
+                logger.exception("Could not read spawn history for catch %s", catch.id)
+                await message.reply(
+                    "I couldn't read the spawn history to identify the form.",
+                    mention_author=False,
+                )
+                return
+            if form_name is None:
+                await message.reply(
+                    "I couldn't identify the exact form from Vivillon's spawn reply.",
+                    mention_author=False,
+                )
+                return
+        reserved_names = (caught_name, details.pokemon)
+        if message.author.id not in reserved_user_ids_for_pokemon(
+            self.reservations, message.guild.id, form_name,
+            additional_names=reserved_names,
+        ):
+            await message.reply(
+                "You don't have this Pokémon reserved.", mention_author=False
+            )
+            return
+        price = report_category_price(
+            self.reserve_categories, message.guild.id, form_name,
+            gigantamax=details.gigantamax,
+        )
+        if price is None:
+            try:
+                price = report_spawn_price(caught_name, catch.created_at.month)
+            except (OSError, ValueError, KeyError, TypeError):
+                logger.exception("Could not load report spawn weights")
+                await message.reply(
+                    "I couldn't load the spawn-rate data. Check the bot logs.",
+                    mention_author=False,
+                )
+                return
+        if price is None:
+            await message.reply(
+                "No spawn-rate price is available for this Pokémon.", mention_author=False
+            )
+            return
+        try:
+            destination = self.get_channel(RESERVE_REPORT_CHANNEL_ID)
+            if destination is None:
+                destination = await self.fetch_channel(RESERVE_REPORT_CHANNEL_ID)
+            if not isinstance(destination, (discord.TextChannel, discord.Thread)) or (
+                destination.guild.id != message.guild.id
+            ):
+                await message.reply(
+                    "The report channel isn't available in this server.",
+                    mention_author=False,
+                )
+                return
+            shown_name = f"Gigantamax {form_name}" if details.gigantamax else form_name
+            await destination.send(
+                f"<@{details.user_id}> hey you stole a reserved Pokémon\n"
+                f"Pokémon: {shown_name}\n"
+                f"PC: {price:,} PC\n"
+                f"<@{details.user_id}> trade <@{message.author.id}> "
+                f"in <#{RESERVE_REPORT_TRADE_THREAD_ID}>\n"
+                f"{catch.jump_url}",
+                allowed_mentions=discord.AllowedMentions(
+                    users=True, roles=False, everyone=False, replied_user=False
+                ),
+            )
+        except discord.HTTPException:
+            logger.exception("Could not send reserve report for catch %s", catch.id)
+            await message.reply(
+                "I couldn't send the report. Check the bot's channel permissions.",
+                mention_author=False,
+            )
+            return
+        await message.reply("Report sent.", mention_author=False)
 
     async def handle_ping_command(self, message: discord.Message) -> None:
         started_at = time.perf_counter()
