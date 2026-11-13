@@ -1687,6 +1687,8 @@ def shown_form_name(name: str, form_name: str | None) -> str:
         return unown_form
     if form_name in CUSTOM_FORM_SPECIES:
         return form_name
+    if form_name == "East Sea Gastrodon":
+        return form_name
     if (
         form_name in SILVALLY_FORMS
         or form_name in VIVILLON_FORM_SET

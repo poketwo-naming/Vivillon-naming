@@ -538,6 +538,44 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(confidence, 100.0)
 
     @unittest.skipIf(image_match.cv2 is None, "OpenCV is not installed")
+    async def test_recent_references_are_named_at_full_confidence(self) -> None:
+        matcher = image_match.ImageMatcher(Path(__file__).with_name("image_bank.npz"))
+        root = Path(__file__).with_name("pokemon_images")
+        for folder, filename, expected in (
+            ("B Unown", "user-reference-2026-11-13.png", "B Unown"),
+            ("J Unown", "user-reference-2026-11-13.png", "J Unown"),
+            ("East Sea Gastrodon", "user-reference-2026-11-13.png", "East Sea Gastrodon"),
+            ("Kilowattrel", "user-reference-2026-11-13.png", "Kilowattrel"),
+            ("Kilowattrel", "user-reference-2026-11-13-screenshot.png", "Kilowattrel"),
+            ("Lampent", "user-reference-2026-11-13.png", "Lampent"),
+            ("Salandit", "user-reference-2026-11-13-1.png", "Salandit"),
+            ("Salandit", "user-reference-2026-11-13-2.png", "Salandit"),
+            ("Salandit", "user-reference-2026-11-13-3.png", "Salandit"),
+            ("Snom", "user-reference-2026-11-13.png", "Snom"),
+        ):
+            with self.subTest(pokemon=folder, filename=filename):
+                image = (root / folder / filename).read_bytes()
+                with patch(
+                    "bot.download_image",
+                    new=AsyncMock(return_value=(image, "image/png")),
+                ):
+                    result = await bot_module.recognize_pokemon(
+                        "https://example.test/spawn.png",
+                        client=None,
+                        http=Mock(),
+                        model="test-model",
+                        matcher=matcher,
+                    )
+                self.assertEqual(result, (expected, 100.0))
+
+    def test_east_sea_gastrodon_keeps_its_form_in_the_display(self) -> None:
+        self.assertEqual(
+            shown_form_name("Gastrodon", "East Sea Gastrodon"),
+            "East Sea Gastrodon",
+        )
+        self.assertEqual(image_match.species_display_name("East Sea Gastrodon"), "Gastrodon")
+
+    @unittest.skipIf(image_match.cv2 is None, "OpenCV is not installed")
     async def test_user_q_unown_reference_is_recognized_at_full_confidence(self) -> None:
         matcher = image_match.ImageMatcher(Path(__file__).with_name("image_bank.npz"))
         image = (

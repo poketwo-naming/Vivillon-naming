@@ -675,6 +675,10 @@ references, rather than adding their features to the general bank. An exact
 image gets its assigned name; a resized or re-encoded image still uses regular
 recognition. If identical files have conflicting names, they are excluded from
 the exact index and a warning is logged.
+When removing an incorrect image, remove every copy under `pokemon_images/`,
+including any tracked `user-reference-*` copy and any copy in the ignored
+archive, then rebuild the bank. Removing only one copy can leave the other
+in the bank. Restart the bot after rebuilding.
 
 You can place a bulk archive of per-Pokémon image folders anywhere under `pokemon_images/` (for example `pokemon_images/archive/`). The builder searches recursively, merges duplicate folders, skips ambiguous composite images, and recognizes species, known forms, regional forms and event-costume names. Raw archive images are git-ignored; only upload the generated bank.
 Gender-coded folders such as `nidoran-f` and `nidoran-m` retain their separate

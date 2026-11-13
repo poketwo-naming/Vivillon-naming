@@ -101,6 +101,39 @@ class ImageMatcherTests(unittest.TestCase):
 
         self.assertEqual(list(groups), ["Shaymin"])
 
+    def test_gastrodon_east_sea_folder_uses_east_sea_form(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for folder in ("Gastrodon East sea", "East Sea Gastrodon"):
+                image_path = root / folder / "image.png"
+                image_path.parent.mkdir()
+                image_path.write_bytes(b"")
+
+            groups = reference_images(root)
+
+        self.assertEqual(list(groups), ["East Sea Gastrodon"])
+        self.assertEqual(len(groups["East Sea Gastrodon"]), 2)
+
+    def test_kilowattrel_artwork_matches_common_image_variations(self) -> None:
+        root = Path(__file__).with_name("pokemon_images") / "Kilowattrel"
+        image = image_match.cv2.imread(
+            str(root / "spawn-reference-2026-11-13.png"),
+            image_match.cv2.IMREAD_UNCHANGED,
+        )
+        self.assertIsNotNone(image)
+        variations = (
+            (".png", image_match.cv2.flip(image, 1)),
+            (".png", image_match.cv2.resize(image, None, fx=0.75, fy=0.75)),
+            (".jpg", image_match.cv2.cvtColor(image, image_match.cv2.COLOR_BGRA2BGR)),
+        )
+        matcher = ImageMatcher(Path(__file__).with_name("image_bank.npz"))
+        for extension, variation in variations:
+            with self.subTest(extension=extension, shape=variation.shape):
+                success, encoded = image_match.cv2.imencode(extension, variation)
+                self.assertTrue(success)
+                result = require_match(matcher.match(encoded.tobytes()))
+                self.assertEqual(result[0], "Kilowattrel")
+
     def test_nidoran_gendered_reference_names_stay_distinct(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
