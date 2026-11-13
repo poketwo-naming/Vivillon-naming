@@ -7491,9 +7491,10 @@ class FireSpawnFormattingTests(unittest.TestCase):
 
         self.assertEqual(
             format_guess("Unown", 100, shown_form_name("Unown", "Unown Variant 3")),
-            "Unown: 100.00%",
+            "C Unown: 100.00%",
         )
-        self.assertEqual(embed.title, "Catch Unown")
+        self.assertEqual(shown_form_name("Unown", "Q Unown"), "Q Unown")
+        self.assertEqual(embed.title, "Catch C Unown")
         self.assertEqual(embed.thumbnail.url, "attachment://unownvariant3.png")
         self.assertEqual([file.filename for file in files], ["unownvariant3.png"])
         self.assertEqual(catch_card_files("Unown"), [])
@@ -7506,7 +7507,7 @@ class FireSpawnFormattingTests(unittest.TestCase):
                         100,
                         shown_form_name("Unown", f"Unown Variant {number}"),
                     ),
-                    "Unown: 100.00%",
+                    f"{letter} Unown: 100.00%",
                 )
                 self.assertEqual(
                     format_catch_command(POKETWO_COMMAND_BOT_ID, f"{letter} Unown"),
@@ -7516,7 +7517,7 @@ class FireSpawnFormattingTests(unittest.TestCase):
             with self.subTest(symbol=symbol):
                 self.assertEqual(
                     format_guess("Unown", 100, f"{symbol} Unown"),
-                    "Unown: 100.00%",
+                    f"{symbol} Unown: 100.00%",
                 )
                 self.assertEqual(
                     format_catch_command(POKETWO_COMMAND_BOT_ID, f"{symbol} Unown"),
@@ -7541,12 +7542,15 @@ class FireSpawnFormattingTests(unittest.TestCase):
             guess_name="Q Unown",
         )
 
-        self.assertEqual(embed.title, "Catch Unown")
+        self.assertEqual(embed.title, "Catch Q Unown")
         self.assertEqual(embed.thumbnail.url, "attachment://qunown.png")
         self.assertEqual([file.filename for file in files], ["qunown.png"])
+        self.assertIn("Q Unown: 100.00%", reply)
+        self.assertIn("c unown", reply)
+        self.assertNotIn("c q unown", reply)
         self.assertEqual(
             reply,
-            "Unown: 100.00%\n**Copy Here >** `@Pokétwo#8236 c unown`",
+            "Q Unown: 100.00%\n**Copy Here >** `@Pokétwo#8236 c unown`",
         )
         for file in files:
             file.close()

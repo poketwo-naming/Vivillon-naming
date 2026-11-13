@@ -1648,16 +1648,29 @@ def is_unown_form_name(name: str) -> bool:
     )
 
 
+def unown_display_form(name: str) -> str | None:
+    if UNOWN_LETTER_PATTERN.fullmatch(name) is not None:
+        return name
+    variant = re.fullmatch(r"Unown Variant\s+(\d+)", name, re.IGNORECASE)
+    if variant is None:
+        return None
+    number = int(variant.group(1))
+    if 1 <= number <= 26:
+        return f"{chr(ord('A') + number - 1)} Unown"
+    return {27: "! Unown", 28: "? Unown"}.get(number)
+
+
 def format_guess(
     name: str, confidence: float, guess_name: str | None = None
 ) -> str:
-    is_unown = is_unown_form_name(name) or is_unown_form_name(guess_name or "")
-    shown_name = "Unown" if is_unown else guess_name or name
-    return f"{display_pokemon_name(shown_name)}: {confidence:.2f}%"
+    return f"{display_pokemon_name(guess_name or name)}: {confidence:.2f}%"
 
 
 def shown_form_name(name: str, form_name: str | None) -> str:
     """Silvally types, Vivillon patterns and Arceus types are shown by form, but caught and reserved as the species."""
+    unown_form = unown_display_form(form_name or name)
+    if unown_form is not None:
+        return unown_form
     if form_name in CUSTOM_FORM_SPECIES:
         return form_name
     if (
@@ -2235,13 +2248,8 @@ def catch_card_files(name: str, thumbnail_name: str | None = None) -> list[disco
 def format_pc_catch_embed(
     name: str, thumbnail_name: str | None = None
 ) -> discord.Embed:
-    shown_name = (
-        "Unown"
-        if is_unown_form_name(name) or is_unown_form_name(thumbnail_name or "")
-        else shown_form_name(name, thumbnail_name)
-    )
     embed = discord.Embed(
-        title=f"Catch {display_pokemon_name(shown_name)}",
+        title=f"Catch {display_pokemon_name(shown_form_name(name, thumbnail_name))}",
         description=(
             f"Copy Below\n"
             f"```\n{format_catch_command(POKETWO_COMMAND_BOT_ID, name)}\n```"
