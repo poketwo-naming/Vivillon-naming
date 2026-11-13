@@ -5178,6 +5178,40 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(image.size, (1400, 825))
                 self.assertNotEqual(image.getpixel((700, 500)), (255, 255, 255))
 
+    def test_pink_ninetales_frame_access_and_profile_fit(self) -> None:
+        owner = bot_module.PROFILE_PINK_NINETALES_USER_ID
+        all_access = bot_module.PROFILE_GARDEVOIR_USER_ID
+        for user_id in (owner, all_access):
+            with self.subTest(user_id=user_id):
+                self.assertIn(
+                    "pink_ninetales", self.bot.profile_choices_for_user(user_id, "frame")
+                )
+                self.bot.set_profile_setting(user_id, "frame", "pink_ninetales")
+        self.assertNotIn("pink_ninetales", self.bot.profile_choices_for_user(123, "frame"))
+        with self.assertRaises(ValueError):
+            self.bot.set_profile_setting(123, "frame", "pink_ninetales")
+
+        profiles, _, _, _ = load_profile_data(self.bot.profile_data_path)
+        for user_id in (owner, all_access):
+            self.assertEqual(profiles[str(user_id)]["frame"], "pink_ninetales")
+        settings = profiles[str(owner)]
+        stats = dict(bot_module.PROFILE_STAT_DEFAULTS)
+        with Image.open(render_profile_image({**settings, "frame": "none"}, stats)) as base:
+            with Image.open(render_profile_image(settings, stats)) as framed:
+                self.assertEqual(framed.size, (1610, 1001))
+                self.assertEqual(framed.mode, "RGBA")
+                # The unobstructed center preserves the full-size profile card.
+                self.assertEqual(
+                    framed.crop((255, 208, 1255, 808)).convert("RGB").tobytes(),
+                    base.crop((150, 120, 1150, 720)).tobytes(),
+                )
+                with patch.dict(bot_module.PROFILE_FRAME_IMAGES, {}, clear=True):
+                    with Image.open(render_profile_image(settings, stats)) as unobstructed:
+                        self.assertEqual(
+                            framed.crop((1085, 821, 1325, 858)).convert("RGB").tobytes(),
+                            unobstructed.crop((980, 733, 1220, 770)).tobytes(),
+                        )
+
     def test_restricted_assets_are_removed_from_other_users_on_load(self) -> None:
         flower_settings = {
             "text_color": "white",

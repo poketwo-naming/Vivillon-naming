@@ -307,6 +307,7 @@ PROFILE_FRAMES: Final[dict[str, tuple[str, str]]] = {
     "amethyst": ("Amethyst", "Amethyst profile frame"),
     "celestial": ("Celestial", "Celestial profile frame"),
     "ocean": ("Ocean", "Ocean profile frame"),
+    "pink_ninetales": ("Pink Ninetales", "Pink Ninetales profile frame"),
 }
 PROFILE_FRAME_IMAGES: Final[dict[str, Path]] = {
     "mystic": Path(__file__).with_name("Frames") / "mystic.png",
@@ -320,6 +321,7 @@ PROFILE_FRAME_IMAGES: Final[dict[str, Path]] = {
     "amethyst": Path(__file__).with_name("Frames") / "amethyst.png",
     "celestial": Path(__file__).with_name("Frames") / "celestial.png",
     "ocean": Path(__file__).with_name("Frames") / "ocean.png",
+    "pink_ninetales": Path(__file__).with_name("Frames") / "pink_ninetales.png",
 }
 PROFILE_FRAME_OPENINGS: Final[dict[str, tuple[int, int, int, int]]] = {
     "nightflower": (74, 84, 1595, 845),
@@ -331,6 +333,7 @@ PROFILE_FRAME_OPENINGS: Final[dict[str, tuple[int, int, int, int]]] = {
     "amethyst": (20, 45, 1095, 723),
     "celestial": (82, 110, 1339, 851),
     "ocean": (91, 123, 1491, 948),
+    "pink_ninetales": (100, 90, 1436, 934),
 }
 PROFILE_FRAME_SCALES: Final[dict[str, float]] = {
     "mystic": 1.0,
@@ -345,6 +348,7 @@ PROFILE_CARD_SCALES: Final[dict[str, float]] = {
     "moonveil": 1.1,
     "jirachi": 1.0,
     "magic": 1.0,
+    "pink_ninetales": 1.0,
 }
 PROFILE_FRAME_CANVAS_SIZE: Final[tuple[int, int]] = (1467, 868)
 PROFILE_FRAME_ALPHA_GAMMA: Final[float] = 0.6
@@ -393,6 +397,7 @@ PROFILE_USER_ONLY_CHOICES: Final[dict[int, dict[str, frozenset[str]]]] = {
     PROFILE_PINK_NINETALES_USER_ID: {
         "background": frozenset({"pink_ninetales"}),
         "middle_background": frozenset({"pink_ninetales"}),
+        "frame": frozenset({"pink_ninetales"}),
     },
 }
 PROFILE_RETURN_TO_ME: Final[dict[str, tuple[str, str, Path]]] = {
@@ -6640,7 +6645,7 @@ def render_profile_image(
                 font=record_value_font,
                 fill=text_color,
             )
-    box_shiny_y = 760
+    box_shiny_y = 735 if settings["frame"] == "pink_ninetales" else 760
     draw_profile_stat_icon(
         image,
         draw,
