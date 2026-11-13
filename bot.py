@@ -252,6 +252,7 @@ PROFILE_BACKGROUNDS: Final[dict[str, tuple[str, str]]] = {
     "marshadow": ("Marshadow", "Marshadow blurred profile background"),
     "jirachi": ("Jirachi", "Jirachi blurred profile background"),
     "gardevoir": ("Gardevoir", "Gardevoir blurred profile background"),
+    "pink_ninetales": ("Pink Ninetales", "Pink Ninetales blurred profile background"),
 }
 PROFILE_BACKGROUND_IMAGES: Final[dict[str, Path]] = {
     "cosmog": Path(__file__).with_name("background") / "cosmog.png",
@@ -264,6 +265,7 @@ PROFILE_BACKGROUND_IMAGES: Final[dict[str, Path]] = {
     "marshadow": Path(__file__).with_name("background") / "marshadow.png",
     "jirachi": Path(__file__).with_name("background") / "jirachi.png",
     "gardevoir": Path(__file__).with_name("background") / "gardevoir.png",
+    "pink_ninetales": Path(__file__).with_name("background") / "pink_ninetales.png",
 }
 PROFILE_MIDDLE_BACKGROUNDS: Final[dict[str, tuple[str, str]]] = {
     "white": ("Default middle background", "#FFFFFF"),
@@ -275,6 +277,7 @@ PROFILE_MIDDLE_BACKGROUNDS: Final[dict[str, tuple[str, str]]] = {
     "marshadow": ("Marshadow", "Marshadow middle background"),
     "jirachi": ("Jirachi", "Jirachi middle background"),
     "gardevoir": ("Gardevoir", "Gardevoir middle background"),
+    "pink_ninetales": ("Pink Ninetales", "Pink Ninetales middle background"),
 }
 PROFILE_MIDDLE_BACKGROUND_IMAGES: Final[dict[str, Path]] = {
     "cosmog": Path(__file__).with_name("middle background") / "Cosmog.png",
@@ -285,6 +288,7 @@ PROFILE_MIDDLE_BACKGROUND_IMAGES: Final[dict[str, Path]] = {
     "marshadow": Path(__file__).with_name("middle background") / "Marshadow.png",
     "jirachi": Path(__file__).with_name("middle background") / "Jirachi.png",
     "gardevoir": Path(__file__).with_name("middle background") / "Gardevoir.png",
+    "pink_ninetales": Path(__file__).with_name("middle background") / "Pink Ninetales.png",
 }
 PROFILE_LEGACY_CHOICES: Final[dict[str, frozenset[str]]] = {
     "background": frozenset({"rose", "blue", "purple", "mint"}),
@@ -356,6 +360,7 @@ PROFILE_MOONLIT_USER_ID: Final[int] = 883224024161873940
 PROFILE_MARSHADOW_USER_ID: Final[int] = 1398882668401135657
 PROFILE_JIRACHI_USER_ID: Final[int] = 616386709659189268
 PROFILE_GARDEVOIR_USER_ID: Final[int] = 729509574486523907
+PROFILE_PINK_NINETALES_USER_ID: Final[int] = 217819108329259008
 PROFILE_ALL_ACCESS_USER_IDS: Final[frozenset[int]] = frozenset(
     {PROFILE_GARDEVOIR_USER_ID}
 )
@@ -384,6 +389,10 @@ PROFILE_USER_ONLY_CHOICES: Final[dict[int, dict[str, frozenset[str]]]] = {
         "background": frozenset({"gardevoir"}),
         "middle_background": frozenset({"gardevoir"}),
         "frame": frozenset({"magic"}),
+    },
+    PROFILE_PINK_NINETALES_USER_ID: {
+        "background": frozenset({"pink_ninetales"}),
+        "middle_background": frozenset({"pink_ninetales"}),
     },
 }
 PROFILE_RETURN_TO_ME: Final[dict[str, tuple[str, str, Path]]] = {

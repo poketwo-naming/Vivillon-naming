@@ -470,6 +470,9 @@ edit menu; choosing **Return to me** DMs the owner a one-hour audio file
 `music/return_to_me.mp3` as a private reply instead. Each
 set is hidden from other members and reset to defaults if found in their
 saved settings.
+The Pink Ninetales background and middle background are available to their
+designated profile and the existing all-access profile. The outer background
+is blurred automatically when the profile is rendered.
 Profile choices and per-server totals are saved in `profile_data.json` by
 default; set `PROFILE_DATA_FILE` to use another path.
 

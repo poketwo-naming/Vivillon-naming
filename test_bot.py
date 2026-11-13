@@ -5150,6 +5150,34 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(actual.size, expected_size)
             self.assertEqual(actual.mode, "RGBA")
 
+    def test_pink_ninetales_backgrounds_are_restricted_and_rendered(self) -> None:
+        owner = bot_module.PROFILE_PINK_NINETALES_USER_ID
+        all_access = bot_module.PROFILE_GARDEVOIR_USER_ID
+        for setting in ("background", "middle_background"):
+            for user_id in (owner, all_access):
+                with self.subTest(setting=setting, user_id=user_id):
+                    self.assertIn(
+                        "pink_ninetales",
+                        self.bot.profile_choices_for_user(user_id, setting),
+                    )
+                    self.bot.set_profile_setting(user_id, setting, "pink_ninetales")
+            self.assertNotIn(
+                "pink_ninetales", self.bot.profile_choices_for_user(123, setting)
+            )
+            with self.assertRaises(ValueError):
+                self.bot.set_profile_setting(123, setting, "pink_ninetales")
+
+        profiles, _, _, _ = load_profile_data(self.bot.profile_data_path)
+        for user_id in (owner, all_access):
+            settings = profiles[str(user_id)]
+            self.assertEqual(settings["background"], "pink_ninetales")
+            self.assertEqual(settings["middle_background"], "pink_ninetales")
+            with Image.open(
+                render_profile_image(settings, dict(bot_module.PROFILE_STAT_DEFAULTS))
+            ) as image:
+                self.assertEqual(image.size, (1400, 825))
+                self.assertNotEqual(image.getpixel((700, 500)), (255, 255, 255))
+
     def test_restricted_assets_are_removed_from_other_users_on_load(self) -> None:
         flower_settings = {
             "text_color": "white",
