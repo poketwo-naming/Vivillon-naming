@@ -9198,6 +9198,7 @@ class NamingBot(commands.Bot):
             if re.fullmatch(r"v!support\s*", message.content, re.IGNORECASE):
                 donation_url = "https://gofund.me/a71832b06"
                 description = (
+                    "<a:emoji_27:1534340529192697959> "
                     "Running and developing Vivillon costs money. "
                     "Donations are completely optional, but every bit of support "
                     "helps keep the bot running. Thank you!"

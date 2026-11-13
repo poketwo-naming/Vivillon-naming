@@ -10136,6 +10136,7 @@ class CommandLockTests(unittest.IsolatedAsyncioTestCase):
 
         kwargs = awaited_kwargs(message.reply)
         self.assertIn("optional", kwargs["embed"].description)
+        self.assertIn("<a:emoji_27:1534340529192697959>", kwargs["embed"].description)
         self.assertEqual(kwargs["view"].children[0].url, "https://gofund.me/a71832b06")
         self.assertEqual(kwargs["view"].children[0].label, "Donate on GoFundMe")
 
