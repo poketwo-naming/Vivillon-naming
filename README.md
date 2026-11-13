@@ -348,11 +348,12 @@ When categories overlap, the higher category price wins, and category prices
 override spawn-rate prices. Other Pokémon use the nearest lower spawn-rate tier,
 with a 2,500 PC minimum and a 50,000 PC maximum.
 
-Spawn rates are estimates from the pinned
-[public Pokétwo data snapshot](https://github.com/poketwo/data/blob/c6262832f65e989176b084d13bc9e13a4d101fb9/csv/pokemon.csv);
-live rates may differ. Seasonal spawn restrictions are applied using the catch
-date. If no rate is available, the report is not sent. When a catch names only
-a species with custom forms, Vivillon uses naming-bot replies to the
+Spawn rates use the denominator listed in the
+[Pokétwo chance CSV](https://gist.githubusercontent.com/WitherredAway/1bc525b05f4cd52555a2a18c331e0cf9/raw/a9c321427ad935b1de74660c0116731a001140ac/pokemon_chances.csv);
+live rates may differ. When naming-bot evidence identifies a custom form, its
+listed rate is used, falling back to the species rate if that form is not
+listed. If no rate is available, the report is not sent. When a catch names
+only a species with custom forms, Vivillon uses naming-bot replies to the
 corresponding spawn to identify the form. If none is found, or the identified
 forms conflict, the report is not sent. This identification is a recognition
 guess, not a guarantee.

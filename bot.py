@@ -3199,11 +3199,13 @@ def reserved_user_ids_for_pokemon(
 
 
 @lru_cache(maxsize=1)
-def load_report_spawn_weights() -> list[tuple[str, int, str]]:
-    path = Path(__file__).with_name("data") / "poketwo_spawn_weights.json"
+def load_report_spawn_chances() -> list[tuple[str, int]]:
+    path = Path(__file__).with_name("data") / "poketwo_spawn_chances.csv"
     with path.open(encoding="utf-8") as file:
-        data = json.load(file)
-    return [(name, weight, season) for name, weight, season in data["pokemon"]]
+        return [
+            (row["Pokemon"], int(row["Chance"].split("/", 1)[1]))
+            for row in csv.DictReader(file)
+        ]
 
 
 def report_category_price(
@@ -3233,24 +3235,21 @@ def report_category_price(
     return max(matching_prices, default=None)
 
 
-def report_spawn_price(pokemon_name: str, month: int) -> int | None:
-    season = ("winter", "winter", "spring", "spring", "spring", "summer",
-              "summer", "summer", "autumn", "autumn", "autumn", "winter")[month - 1]
-    weights = [
-        (name, weight) for name, weight, restriction in load_report_spawn_weights()
-        if not restriction or restriction == season
-    ]
+def report_spawn_price(pokemon_name: str) -> int | None:
     name_key = reservation_key(0, pokemon_name)
-    weight = next(
-        (weight for name, weight in weights if reservation_key(0, name) == name_key),
+    chance_denominator = next(
+        (
+            denominator
+            for name, denominator in load_report_spawn_chances()
+            if reservation_key(0, name) == name_key
+        ),
         None,
     )
-    if weight is None:
+    if chance_denominator is None:
         return None
-    total = sum(weight for _, weight in weights)
     price = RESERVE_REPORT_PRICES[0][1]
     for denominator, amount in RESERVE_REPORT_PRICES:
-        if total >= denominator * weight:
+        if chance_denominator >= denominator:
             price = amount
     return price
 
@@ -10885,9 +10884,11 @@ class NamingBot(commands.Bot):
         )
         if price is None:
             try:
-                price = report_spawn_price(caught_name, catch.created_at.month)
+                price = report_spawn_price(form_name)
+                if price is None and form_name.casefold() != caught_name.casefold():
+                    price = report_spawn_price(caught_name)
             except (OSError, ValueError, KeyError, TypeError):
-                logger.exception("Could not load report spawn weights")
+                logger.exception("Could not load report spawn chances")
                 await message.reply(
                     "I couldn't load the spawn-rate data. Check the bot logs.",
                     mention_author=False,

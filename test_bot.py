@@ -625,15 +625,15 @@ class ReserveReportPriceTests(unittest.TestCase):
     def test_spawn_rate_tier_boundaries(self) -> None:
         tiers = bot_module.RESERVE_REPORT_PRICES
         for index, (denominator, price) in enumerate(tiers):
-            for total, expected in (
+            for chance, expected in (
                 (denominator, price),
                 (denominator - 1, tiers[index - 1][1] if index else 2500),
             ):
-                with self.subTest(total=total):
-                    with patch("bot.load_report_spawn_weights", return_value=[
-                        ("Pikachu", 1, ""), ("Other", total - 1, "")
+                with self.subTest(chance=chance):
+                    with patch("bot.load_report_spawn_chances", return_value=[
+                        ("Pikachu", chance)
                     ]):
-                        self.assertEqual(bot_module.report_spawn_price("Pikachu", 1), expected)
+                        self.assertEqual(bot_module.report_spawn_price("Pikachu"), expected)
 
     def test_category_precedence_and_exact_forms(self) -> None:
         categories = {"1": {
@@ -668,14 +668,19 @@ class ReserveReportPriceTests(unittest.TestCase):
             {111, 222},
         )
 
-    def test_public_snapshot_has_real_weight_and_seasonal_filter(self) -> None:
-        self.assertEqual(bot_module.report_spawn_price("Celebi", 11), 40000)
-        with patch("bot.load_report_spawn_weights", return_value=[
-            ("Pikachu", 1, ""), ("Other", 336, "summer")
+    def test_public_chances_include_species_and_forms(self) -> None:
+        self.assertEqual(bot_module.report_spawn_price("Celebi"), 40000)
+        self.assertEqual(bot_module.report_spawn_price("Bagon"), 5000)
+        self.assertEqual(bot_module.report_spawn_price("Winter Deerling"), 15000)
+        self.assertEqual(
+            bot_module.report_spawn_price("Caramel Swirl Strawberry Sweet Alcremie"),
+            50000,
+        )
+        with patch("bot.load_report_spawn_chances", return_value=[
+            ("Pikachu", 337), ("Other", 336)
         ]):
-            self.assertEqual(bot_module.report_spawn_price("Pikachu", 7), 5000)
-            self.assertEqual(bot_module.report_spawn_price("Pikachu", 1), 2500)
-            self.assertIsNone(bot_module.report_spawn_price("Other", 1))
+            self.assertEqual(bot_module.report_spawn_price("Pikachu"), 5000)
+            self.assertIsNone(bot_module.report_spawn_price("Unlisted"))
 
 
 class ReserveReportCommandTests(unittest.IsolatedAsyncioTestCase):
@@ -742,6 +747,18 @@ class ReserveReportCommandTests(unittest.IsolatedAsyncioTestCase):
         self.bot.report_spawn_evidence.return_value = [("Oracle Meowscarada", set())]
         await self.bot.handle_reserve_report(self.message)
         self.assertIn("Oracle Meowscarada\nPC: 45,000 PC", self.destination.send.await_args.args[0])
+
+    async def test_identified_form_uses_its_spawn_rate(self) -> None:
+        self.catch.content = "Congratulations <@222>! You caught a Level 5 Alcremie!"
+        self.bot.report_spawn_evidence = AsyncMock(
+            return_value=[("Caramel Swirl Strawberry Sweet Alcremie", {111})]
+        )
+        await self.bot.handle_reserve_report(self.message)
+        content = self.destination.send.await_args.args[0]
+        self.assertIn(
+            "Pokémon: Caramel Swirl Strawberry Sweet Alcremie\nPC: 50,000 PC",
+            content,
+        )
 
     async def test_unavailable_price_does_not_send_report(self) -> None:
         self.bot.reservations = {reservation_key(1, "Celebi"): [111]}
