@@ -537,6 +537,38 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(bot_module.display_pokemon_name(name), display)
                 self.assertEqual(confidence, 100.0)
 
+    @unittest.skipIf(image_match.cv2 is None, "OpenCV is not installed")
+    async def test_user_q_unown_reference_is_recognized_at_full_confidence(self) -> None:
+        matcher = image_match.ImageMatcher(Path(__file__).with_name("image_bank.npz"))
+        image = (
+            Path(__file__).with_name("pokemon_images")
+            / "Q Unown"
+            / "user-reference-2026-11-13.png"
+        ).read_bytes()
+        decoded = image_match.cv2.imdecode(
+            image_match.np.frombuffer(image, image_match.np.uint8),
+            image_match.cv2.IMREAD_UNCHANGED,
+        )
+        success, flipped = image_match.cv2.imencode(
+            ".png", image_match.cv2.flip(decoded, 1)
+        )
+        self.assertTrue(success)
+        for candidate in (image, flipped.tobytes()):
+            with self.subTest(mirrored=candidate is not image):
+                with patch(
+                    "bot.download_image",
+                    new=AsyncMock(return_value=(candidate, "image/png")),
+                ):
+                    name, confidence = await bot_module.recognize_pokemon(
+                        "https://example.test/spawn.png",
+                        client=None,
+                        http=Mock(),
+                        model="test-model",
+                        matcher=matcher,
+                    )
+                self.assertEqual(name, "Q Unown")
+                self.assertEqual(confidence, 100.0)
+
     async def test_no_reference_match_uses_low_confidence_local_guess(self) -> None:
         import bot
 
