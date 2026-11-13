@@ -301,6 +301,74 @@ class ConfigTests(unittest.TestCase):
                 _org_api_port_from_environment()
 
 
+class GatewayReconnectTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        with patch("bot.ImageMatcher"):
+            self.bot = NamingBot(ConfigTests().load_config())
+        self.addAsyncCleanup(self.bot.close)
+        self.bot.dispatch = Mock()
+
+    async def test_initial_gateway_503_retries_after_library_reconnect_bug(self) -> None:
+        import aiohttp
+
+        def handshake_error() -> aiohttp.WSServerHandshakeError:
+            return aiohttp.WSServerHandshakeError(
+                SimpleNamespace(real_url="wss://gateway.discord.gg/"),
+                (),
+                status=503,
+                message="Service Unavailable",
+            )
+        websocket = SimpleNamespace(
+            poll_event=AsyncMock(side_effect=RuntimeError("gateway connected")),
+            open=False,
+        )
+        with (
+            patch(
+                "discord.client.DiscordWebSocket.from_client",
+                new=AsyncMock(
+                    side_effect=[handshake_error(), handshake_error(), websocket]
+                ),
+            ) as connect,
+            patch("discord.client.ExponentialBackoff.delay", return_value=0),
+            patch("bot.asyncio.sleep", new=AsyncMock()) as sleep,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "gateway connected"):
+                await self.bot.connect()
+        self.assertEqual(connect.await_count, 3)
+        websocket.poll_event.assert_awaited_once()
+        self.assertEqual(sleep.await_args_list, [call(0), call(5.0), call(0), call(10.0)])
+
+    async def test_unrelated_attribute_error_is_not_retried(self) -> None:
+        with patch(
+            "discord.ext.commands.Bot.connect",
+            new=AsyncMock(side_effect=AttributeError("unrelated")),
+        ) as connect:
+            with self.assertRaisesRegex(AttributeError, "unrelated"):
+                await self.bot.connect()
+        self.assertEqual(connect.await_count, 1)
+
+    async def test_non_server_gateway_error_is_not_retried(self) -> None:
+        import aiohttp
+
+        handshake_error = aiohttp.WSServerHandshakeError(
+            SimpleNamespace(real_url="wss://gateway.discord.gg/"),
+            (),
+            status=403,
+            message="Forbidden",
+        )
+        with (
+            patch(
+                "discord.client.DiscordWebSocket.from_client",
+                new=AsyncMock(side_effect=handshake_error),
+            ) as connect,
+            patch("discord.client.ExponentialBackoff.delay", return_value=0),
+            patch("bot.asyncio.sleep", new=AsyncMock()),
+        ):
+            with self.assertRaises(AttributeError):
+                await self.bot.connect()
+        self.assertEqual(connect.await_count, 1)
+
+
 class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
     async def test_vision_prompt_includes_custom_form_names(self) -> None:
         import bot
@@ -547,11 +615,14 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
             ("East Sea Gastrodon", "user-reference-2026-11-13.png", "East Sea Gastrodon"),
             ("Kilowattrel", "user-reference-2026-11-13.png", "Kilowattrel"),
             ("Kilowattrel", "user-reference-2026-11-13-screenshot.png", "Kilowattrel"),
+            ("Koraidon", "user-reference-2026-11-13-build.png", "Koraidon"),
             ("Lampent", "user-reference-2026-11-13.png", "Lampent"),
             ("Salandit", "user-reference-2026-11-13-1.png", "Salandit"),
             ("Salandit", "user-reference-2026-11-13-2.png", "Salandit"),
             ("Salandit", "user-reference-2026-11-13-3.png", "Salandit"),
+            ("Salandit", "user-reference-2026-11-13-4.png", "Salandit"),
             ("Snom", "user-reference-2026-11-13.png", "Snom"),
+            ("Swablu", "user-reference-2026-11-13.png", "Swablu"),
         ):
             with self.subTest(pokemon=folder, filename=filename):
                 image = (root / folder / filename).read_bytes()
@@ -7495,7 +7566,6 @@ class FireSpawnFormattingTests(unittest.TestCase):
         forms = (
             ("Partner Pikachu", "Pikachu"),
             ("Partner Eevee", "Eevee"),
-            ("Gliding Build Koraidon", "Koraidon"),
             ("Zenith Marshadow", "Marshadow"),
             ("Galarian Zen Darmanitan", "Darmanitan"),
             ("Zygarde Cell", "Zygarde"),
@@ -7529,6 +7599,17 @@ class FireSpawnFormattingTests(unittest.TestCase):
                 self.assertIn(f"c {species.casefold()}", reply)
                 for file in files:
                     file.close()
+
+    def test_koraidon_build_displays_and_catches_base_species(self) -> None:
+        form = "Gliding Build Koraidon"
+        species = image_match.species_display_name(form)
+        displayed = shown_form_name(species, form)
+        self.assertEqual(displayed, "Koraidon")
+        self.assertEqual(format_pc_catch_embed(species, form).title, "Catch Koraidon")
+        self.assertTrue(
+            format_spawn_reply(species, 100, POKETWO_COMMAND_BOT_ID, guess_name=displayed)
+            .startswith("Koraidon: 100.00%")
+        )
 
     def test_zygarde_core_displays_form_and_catches_base_species(self) -> None:
         form = "Zygarde Core"
@@ -10929,6 +11010,25 @@ class TypeEmojiTests(unittest.TestCase):
         self.assertEqual(bot.pokemon_types_for("Heat Rotom"), ["electric", "fire"])
         self.assertEqual(bot.pokemon_types_for("Bug Silvally", "Silvally"), ["bug"])
         self.assertEqual(bot.pokemon_types_for("Icy-Snow Vivillon"), ["bug", "flying"])
+
+    def test_all_unown_forms_show_psychic_type(self) -> None:
+        for form in (
+            "Unown",
+            *(f"{letter} Unown" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ!?"),
+            *(f"Unown Variant {number}" for number in range(1, 29)),
+        ):
+            with self.subTest(form=form):
+                types = bot_module.pokemon_types_for(form)
+                self.assertEqual(types, ["psychic"])
+                self.assertEqual(
+                    bot_module.type_emoji_text(form), bot_module.TYPE_EMOJIS["psychic"]
+                )
+        reply = bot_module.format_typed_spawn_reply(
+            "Q Unown", 100, POKETWO_COMMAND_BOT_ID,
+            bot_module.type_emoji_text("Q Unown"), guess_name="Q Unown",
+        )
+        self.assertIn(f"{bot_module.TYPE_EMOJIS['psychic']} Q Unown: 100.00%", reply)
+        self.assertIn("c unown", reply)
 
     def test_every_type_has_an_emoji_and_reply_leads_with_it(self) -> None:
         import bot

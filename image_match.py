@@ -383,6 +383,7 @@ def reference_images(folder: Path) -> dict[str, list[Path]]:
             forms_by_key[key(form["identifier"])] = canonical
             forms_by_key[key(form["display_name"])] = canonical
     forms_by_key[key("Gastrodon East Sea")] = "East Sea Gastrodon"
+    forms_by_key[key("Koraidon Build")] = "Koraidon"
 
     regions = {
         "alola": "Alolan",

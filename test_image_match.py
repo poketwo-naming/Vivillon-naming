@@ -188,7 +188,7 @@ class ImageMatcherTests(unittest.TestCase):
         image_path = (
             Path(__file__).with_name("pokemon_images")
             / "Bonsly"
-            / "spawn-reference.png"
+            / "actual-reference.png"
         )
         image = cv2.imread(str(image_path))
         image = require_match(image)
@@ -203,6 +203,19 @@ class ImageMatcherTests(unittest.TestCase):
                 result = matcher.match(buffer.tobytes())
                 result = require_match(result)
                 self.assertEqual(result[0], "Bonsly")
+
+    def test_trubbish_mislabeled_as_bonsly_matches_in_both_orientations(self) -> None:
+        matcher = ImageMatcher(Path(__file__).with_name("image_bank.npz"))
+        root = Path(__file__).with_name("pokemon_images") / "Trubbish"
+        for filename in ("spawn-reference.png", "spawn-screenshot-2026-11-13.png"):
+            image = image_match.cv2.imread(str(root / filename))
+            image = require_match(image)
+            for candidate in (image, image_match.cv2.flip(image, 1)):
+                with self.subTest(filename=filename, mirrored=candidate is not image):
+                    success, buffer = image_match.cv2.imencode(".png", candidate)
+                    self.assertTrue(success)
+                    result = require_match(matcher.match(buffer.tobytes()))
+                    self.assertEqual(result[0], "Trubbish")
 
     def test_hippopotas_recent_spawn_matches_in_both_orientations(self) -> None:
         import cv2
@@ -348,13 +361,15 @@ class ImageMatcherTests(unittest.TestCase):
 
     def test_koraidon_reference_uses_species_name(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            image_path = Path(directory) / "Koraidon" / "image.png"
-            image_path.parent.mkdir()
-            image_path.write_bytes(b"")
+            for folder in ("Koraidon", "Koraidon Build"):
+                image_path = Path(directory) / folder / "image.png"
+                image_path.parent.mkdir()
+                image_path.write_bytes(b"")
 
             groups = reference_images(Path(directory))
 
         self.assertEqual(list(groups), ["Koraidon"])
+        self.assertEqual(len(groups["Koraidon"]), 2)
 
     def test_pumpkaboo_size_and_costume_references_use_species_name(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

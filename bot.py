@@ -1685,6 +1685,8 @@ def shown_form_name(name: str, form_name: str | None) -> str:
     unown_form = unown_display_form(form_name or name)
     if unown_form is not None:
         return unown_form
+    if form_name == "Gliding Build Koraidon":
+        return name
     if form_name in CUSTOM_FORM_SPECIES:
         return form_name
     if form_name == "East Sea Gastrodon":
@@ -2036,6 +2038,8 @@ def pokemon_types_for(*names: str | None) -> list[str]:
     for name in names:
         if not name:
             continue
+        if is_unown_form_name(name):
+            return ["psychic"]
         for kind in ("Silvally", "Arceus"):
             prefix = name.removesuffix(f" {kind}")
             if prefix != name and _type_key(prefix) in TYPE_EMOJIS:
@@ -8633,6 +8637,33 @@ class NamingBot(commands.Bot):
         if self.openai is not None:
             await self.openai.close()
         await super().close()
+
+    async def connect(self, *, reconnect: bool = True) -> None:
+        retry_delay = 5.0
+        while not self.is_closed():
+            try:
+                await super().connect(reconnect=reconnect)
+                return
+            except AttributeError as error:
+                cause = error.__context__
+                if not (
+                    reconnect
+                    and self.ws is None
+                    and error.name == "sequence"
+                    and error.obj is None
+                    and isinstance(cause, aiohttp.WSServerHandshakeError)
+                    and 500 <= cause.status < 600
+                ):
+                    raise
+                logger.warning(
+                    "Discord gateway returned HTTP %s before the first connection; "
+                    "retrying in %.0fs after discord.py's reconnect error",
+                    cause.status,
+                    retry_delay,
+                    exc_info=True,
+                )
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 60.0)
 
     async def on_ready(self) -> None:
         logger.info("Logged in as %s", self.user)

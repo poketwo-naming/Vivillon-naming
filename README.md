@@ -66,6 +66,10 @@ approval for privileged intents on larger bots.
    python bot.py
    ```
 
+If Discord's gateway returns a temporary 5xx error during the first connection,
+the bot retries with increasing delays rather than exiting due to a discord.py
+reconnect error. Other startup errors still surface normally.
+
 ### Donations
 
 `v!support` shows an optional donation message and a button linking to the
@@ -179,6 +183,7 @@ configured type matches show their icons beside the guessed name in an embed,
 with the catch command in the embed description when Assisted mode is on. Other
 dual-type Pokémon keep the regular text reply. Reservation, shinyhunt,
 collection, and type-ping mentions remain active for both reply styles.
+All Unown forms show the Psychic type emoji and support Psychic type pings.
 Pokétwo or Discord may ignore or restrict commands sent by another bot account.
 If the prediction is `Missingno.` or `???`, the bot asks for a staff member; it
 does not send a catch command for that spawn.
@@ -690,7 +695,8 @@ to `CUSTOM_FORM_SPECIES` in `image_match.py` when catch commands should use the
 base species. A matching alphanumeric filename in `assets/thumbnails/` supplies
 the catch-card and normal-starboard artwork. This also supports themed variants
 such as Enchanted Applin and Cauldron Reuniclus: the form name is shown while
-catch commands and reservations use the base species. The vision fallback is
+catch commands and reservations use the base species. Koraidon builds are shown
+as Koraidon. The vision fallback is
 also given these custom labels and base species, and only returns a custom
 label when the visible image supports it.
 
