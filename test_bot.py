@@ -6136,8 +6136,9 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertTrue(
                         embed_description(gigantamax_embed).startswith(
-                            "<:gmax:1246699816440954950> **Gigantamax Capture** "
-                            "<:gmax:1246699816440954950>\n"
+                            "<:gigantamax_icon_by_jormxdos_dffv:1570591025322528828> "
+                            "**Gigantamax Capture** "
+                            "<:gigantamax_icon_by_jormxdos_dffv:1570591025322528828>\n"
                         )
                     )
                     self.assertEqual(gigantamax_embed.fields, [])
@@ -6155,8 +6156,10 @@ class CatchStarboardTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIsNone(preview.title)
                     self.assertTrue(
                         embed_description(preview).startswith(
-                            "🧪 **TEST —** <:gmax:1246699816440954950> "
-                            "**Gigantamax Capture** <:gmax:1246699816440954950>\n"
+                            "🧪 **TEST —** "
+                            "<:gigantamax_icon_by_jormxdos_dffv:1570591025322528828> "
+                            "**Gigantamax Capture** "
+                            "<:gigantamax_icon_by_jormxdos_dffv:1570591025322528828>\n"
                         )
                     )
                     self.assertIn("Test preview", preview.footer.text or "")

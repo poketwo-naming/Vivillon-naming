@@ -419,7 +419,7 @@ PROFILE_SHOP_CURRENCY_ICON: Final[Path] = (
     Path(__file__).with_name("assets") / "pokedollar.png"
 )
 PROFILE_SHOP_CURRENCY_ICON_FILENAME: Final[str] = "pokedollar.png"
-GIGANTAMAX_EMOJI: Final[str] = "<:gmax:1504098787658961028>"
+GIGANTAMAX_EMOJI: Final[str] = "<:gigantamax_icon_by_jormxdos_dffv:1570591025322528828>"
 PROFILE_EMOJI_URLS: Final[dict[str, str]] = {
     "low_iv": "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4c9.png",
     "high_iv": "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4c8.png",
