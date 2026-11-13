@@ -66,6 +66,11 @@ approval for privileged intents on larger bots.
    python bot.py
    ```
 
+### Donations
+
+`v!support` shows an optional donation message and a button linking to the
+[GoFundMe page](https://gofund.me/a71832b06).
+
 ## Container deployment
 
 For an always-on host or VM, build and run the bot as a container:

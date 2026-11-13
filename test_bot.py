@@ -10130,6 +10130,35 @@ class CommandLockTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.bot.commands_locked_for_guild(SERVER_ID))
         self.assertEqual(load_command_locks(self.bot.command_locks_path), {})
 
+    async def test_support_command_shows_gofundme_button(self) -> None:
+        message = self.message("V!SUPPORT ")
+        await self.bot.on_message(message)
+
+        kwargs = awaited_kwargs(message.reply)
+        self.assertIn("optional", kwargs["embed"].description)
+        self.assertEqual(kwargs["view"].children[0].url, "https://gofund.me/a71832b06")
+        self.assertEqual(kwargs["view"].children[0].label, "Donate on GoFundMe")
+
+    async def test_support_falls_back_to_text_without_embed_permission(self) -> None:
+        message = self.message("v!support")
+        forbidden = discord.Forbidden(
+            SimpleNamespace(status=403, reason="Forbidden"), "Missing Permissions"
+        )
+        message.reply.side_effect = [forbidden, None]
+
+        await self.bot.on_message(message)
+
+        self.assertEqual(message.reply.await_count, 2)
+        self.assertIn("https://gofund.me/a71832b06", message.reply.await_args.args[0])
+
+    async def test_support_command_respects_command_lock(self) -> None:
+        self.bot.set_commands_locked(SERVER_ID, True)
+        message = self.message("v!support")
+
+        await self.bot.on_message(message)
+
+        self.assertIn("disabled", message.reply.await_args.args[0])
+
     async def test_command_lock_does_not_stop_automatic_spawn_handling(self) -> None:
         self.bot.set_commands_locked(SERVER_ID, True)
         self.bot.track_profile_catch = Mock()

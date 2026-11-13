@@ -118,6 +118,7 @@ HELP_CATEGORIES: Final[list[tuple[str, list[tuple[str, str]]]]] = [
             ("v!event", "Start a chat event."),
             ("v!ping", "Check the bot's response time."),
             ("v!api", "See how many Pokémon were recognized recently."),
+            ("v!support", "Learn how to support the bot with an optional donation."),
             ("v!help", "Show this list."),
         ],
     ),

@@ -9195,6 +9195,28 @@ class NamingBot(commands.Bot):
                     shiny_test_mode=shiny_test_mode,
                 )
                 return
+            if re.fullmatch(r"v!support\s*", message.content, re.IGNORECASE):
+                donation_url = "https://gofund.me/a71832b06"
+                description = (
+                    "Running and developing Vivillon costs money. "
+                    "Donations are completely optional, but every bit of support "
+                    "helps keep the bot running. Thank you!"
+                )
+                embed = discord.Embed(
+                    title="Support Vivillon",
+                    description=description,
+                    color=discord.Color.blurple(),
+                )
+                view = discord.ui.View(timeout=None)
+                view.add_item(discord.ui.Button(label="Donate on GoFundMe", url=donation_url))
+                try:
+                    await message.reply(embed=embed, view=view, mention_author=False)
+                except discord.Forbidden:
+                    await message.reply(
+                        f"{description}\nDonate on GoFundMe: {donation_url}",
+                        mention_author=False,
+                    )
+                return
             if re.fullmatch(HELP_COMMAND_PATTERN, message.content, re.IGNORECASE):
                 try:
                     help_embeds = build_help_menu_embeds()
