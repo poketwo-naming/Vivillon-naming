@@ -29,10 +29,12 @@ from image_match import (
     CUSTOM_FORM_SPECIES,
     FORM_DISPLAY_NAMES,
     ARCEUS_FORM_SET,
+    base_pokemon_name,
     canonicalize_regional_name,
     minimum_votes_for,
     SILVALLY_FORMS,
     SQUAWKABILLY_PLUMAGE_FORMS,
+    UNOWN_LETTER_PATTERN,
     VIVILLON_FORM_SET,
     ImageMatcher,
     cv2,
@@ -1639,10 +1641,19 @@ def display_pokemon_name(name: str) -> str:
     return FORM_DISPLAY_NAMES.get(canonicalize_regional_name(name), canonicalize_regional_name(name))
 
 
+def is_unown_form_name(name: str) -> bool:
+    return (
+        base_pokemon_name(name).casefold() == "unown"
+        or UNOWN_LETTER_PATTERN.fullmatch(name) is not None
+    )
+
+
 def format_guess(
     name: str, confidence: float, guess_name: str | None = None
 ) -> str:
-    return f"{display_pokemon_name(guess_name or name)}: {confidence:.2f}%"
+    is_unown = is_unown_form_name(name) or is_unown_form_name(guess_name or "")
+    shown_name = "Unown" if is_unown else guess_name or name
+    return f"{display_pokemon_name(shown_name)}: {confidence:.2f}%"
 
 
 def shown_form_name(name: str, form_name: str | None) -> str:
@@ -1662,9 +1673,10 @@ def shown_form_name(name: str, form_name: str | None) -> str:
 def format_catch_command(poketwo_bot_id: int, name: str) -> str:
     del poketwo_bot_id
     normalized_name = re.sub(r"[\s_-]+", " ", name.casefold()).strip()
-    catch_name = CATCH_COMMAND_NAME_ALIASES.get(
-        normalized_name,
-        display_pokemon_name(name),
+    catch_name = (
+        "Unown"
+        if is_unown_form_name(name)
+        else CATCH_COMMAND_NAME_ALIASES.get(normalized_name, display_pokemon_name(name))
     )
     return f"@Pokétwo#8236 c {catch_name.lower()}"
 
@@ -2223,8 +2235,13 @@ def catch_card_files(name: str, thumbnail_name: str | None = None) -> list[disco
 def format_pc_catch_embed(
     name: str, thumbnail_name: str | None = None
 ) -> discord.Embed:
+    shown_name = (
+        "Unown"
+        if is_unown_form_name(name) or is_unown_form_name(thumbnail_name or "")
+        else shown_form_name(name, thumbnail_name)
+    )
     embed = discord.Embed(
-        title=f"Catch {display_pokemon_name(shown_form_name(name, thumbnail_name))}",
+        title=f"Catch {display_pokemon_name(shown_name)}",
         description=(
             f"Copy Below\n"
             f"```\n{format_catch_command(POKETWO_COMMAND_BOT_ID, name)}\n```"

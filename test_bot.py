@@ -7491,9 +7491,9 @@ class FireSpawnFormattingTests(unittest.TestCase):
 
         self.assertEqual(
             format_guess("Unown", 100, shown_form_name("Unown", "Unown Variant 3")),
-            "C Unown: 100.00%",
+            "Unown: 100.00%",
         )
-        self.assertEqual(embed.title, "Catch C Unown")
+        self.assertEqual(embed.title, "Catch Unown")
         self.assertEqual(embed.thumbnail.url, "attachment://unownvariant3.png")
         self.assertEqual([file.filename for file in files], ["unownvariant3.png"])
         self.assertEqual(catch_card_files("Unown"), [])
@@ -7506,8 +7506,50 @@ class FireSpawnFormattingTests(unittest.TestCase):
                         100,
                         shown_form_name("Unown", f"Unown Variant {number}"),
                     ),
-                    f"{letter} Unown: 100.00%",
+                    "Unown: 100.00%",
                 )
+                self.assertEqual(
+                    format_catch_command(POKETWO_COMMAND_BOT_ID, f"{letter} Unown"),
+                    "@Pokétwo#8236 c unown",
+                )
+        for symbol in ("!", "?"):
+            with self.subTest(symbol=symbol):
+                self.assertEqual(
+                    format_guess("Unown", 100, f"{symbol} Unown"),
+                    "Unown: 100.00%",
+                )
+                self.assertEqual(
+                    format_catch_command(POKETWO_COMMAND_BOT_ID, f"{symbol} Unown"),
+                    "@Pokétwo#8236 c unown",
+                )
+        for file in files:
+            file.close()
+
+    def test_q_unown_uses_supplied_thumbnail_and_base_species_copy_text(self) -> None:
+        image_path = (
+            Path(__file__).with_name("assets")
+            / "thumbnails"
+            / "qunown.png"
+        )
+        self.assertTrue(image_path.is_file())
+        embed = format_pc_catch_embed("Unown", "Q Unown")
+        files = catch_card_files("Unown", "Q Unown")
+        reply = format_spawn_reply(
+            "Unown",
+            100,
+            POKETWO_COMMAND_BOT_ID,
+            guess_name="Q Unown",
+        )
+
+        self.assertEqual(embed.title, "Catch Unown")
+        self.assertEqual(embed.thumbnail.url, "attachment://qunown.png")
+        self.assertEqual([file.filename for file in files], ["qunown.png"])
+        self.assertEqual(
+            reply,
+            "Unown: 100.00%\n**Copy Here >** `@Pokétwo#8236 c unown`",
+        )
+        for file in files:
+            file.close()
 
     def test_male_indeedee_uses_species_name_and_catch_command(self) -> None:
         species_name = image_match.species_display_name("Male Indeedee")
