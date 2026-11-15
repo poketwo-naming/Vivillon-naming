@@ -1179,15 +1179,19 @@ class DaycareFeature:
                 "Check `POKETWO_BOT_ID` or reply to the Pokétwo list itself.",
             )
             return
-        if not referenced.embeds:
+        parsed = self.parse_list(
+            referenced.content,
+            referenced.embeds,
+            [component.to_dict() for component in referenced.components],
+        )
+        if not parsed and not referenced.content and not referenced.embeds:
             await self.reply(
                 message,
-                "❌ I can't see an embed on the replied-to message. Reply to the "
+                "❌ I can't see the list content on the replied-to message. Reply to the "
                 "Pokétwo list and check that Message Content Intent is enabled and "
                 "approved for this bot.",
             )
             return
-        parsed = self.parse_embeds(referenced.embeds)
         if not parsed:
             await self.reply(message, "❌ I couldn't find any Pokémon codes in that list.")
             return
@@ -1216,10 +1220,17 @@ class DaycareFeature:
         return text
 
     @staticmethod
-    def parse_embeds(embeds: list[discord.Embed]) -> list[tuple[str, list[Any]]]:
-        return parse_pokemon_lines(
-            [embed.description for embed in embeds if embed.description]
-        )
+    def parse_list(
+        content: str, embeds: list[discord.Embed], components: list[dict[str, Any]]
+    ) -> list[tuple[str, list[Any]]]:
+        texts = [content] + [embed.description for embed in embeds if embed.description]
+        pending = list(reversed(components))
+        while pending:
+            component = pending.pop()
+            if component.get("type") == 10 and isinstance(component.get("content"), str):
+                texts.append(component["content"])
+            pending.extend(reversed(component.get("components", [])))
+        return parse_pokemon_lines(texts)
 
     async def resolve_reference(
         self, message: discord.Message
@@ -1227,10 +1238,13 @@ class DaycareFeature:
         if message.reference is None:
             return None
         resolved = message.reference.resolved
-        if isinstance(resolved, discord.Message) and (
-            resolved.author.id != self.poketwo_bot_id or resolved.embeds
-        ):
-            return resolved
+        if isinstance(resolved, discord.Message):
+            if resolved.author.id != self.poketwo_bot_id or self.parse_list(
+                resolved.content,
+                resolved.embeds,
+                [component.to_dict() for component in resolved.components],
+            ):
+                return resolved
         message_id = message.reference.message_id
         if message_id is None:
             return None
@@ -1253,7 +1267,9 @@ class DaycareFeature:
             return
         raw_embeds = payload.data.get("embeds") or []
         embeds = [discord.Embed.from_dict(raw) for raw in raw_embeds]
-        parsed = self.parse_embeds(embeds)
+        parsed = self.parse_list(
+            payload.data.get("content") or "", embeds, payload.data.get("components") or []
+        )
         if not parsed:
             return
         async with self.lock:

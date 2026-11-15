@@ -41,7 +41,8 @@ approval for privileged intents on larger bots.
    monitors. Generated catch commands target `<@716390085896962058>`.
    Breeding box imports also require this ID to match the account posting the
    Pokétwo list. Reply to the list with `v!box append <name>`; use the list's
-   page arrows to add further pages. The bot needs access to the channel and
+   page arrows to add further pages. Lists in embeds or text components are
+   supported. The bot needs access to the channel and
    its message history, and the Message Content Intent enabled and approved
    where Discord requires approval.
 

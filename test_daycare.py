@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import discord
+from discord.components import _component_factory
 
 from daycare import (
     BOX_LIMIT,
@@ -93,6 +94,8 @@ class DaycareAppendTests(unittest.IsolatedAsyncioTestCase):
         self.list_message = Mock(spec=discord.Message)
         self.list_message.id = 42
         self.list_message.author = SimpleNamespace(id=123)
+        self.list_message.content = ""
+        self.list_message.components = []
         self.list_message.embeds = [
             discord.Embed(
                 title="Your pokémon",
@@ -120,7 +123,9 @@ class DaycareAppendTests(unittest.IsolatedAsyncioTestCase):
     async def test_incomplete_resolved_message_is_fetched(self) -> None:
         incomplete = Mock(spec=discord.Message)
         incomplete.author = SimpleNamespace(id=123)
+        incomplete.content = ""
         incomplete.embeds = []
+        incomplete.components = []
         self.message.reference.resolved = incomplete
         await self.feature.box_append(self.message, "event")
         self.message.channel.fetch_message.assert_awaited_once_with(42)
@@ -135,7 +140,7 @@ class DaycareAppendTests(unittest.IsolatedAsyncioTestCase):
     async def test_fetched_message_without_embeds_reports_missing_access(self) -> None:
         self.list_message.embeds = []
         await self.feature.box_append(self.message, "event")
-        self.assertIn("embed", self.message.reply.await_args.args[0].lower())
+        self.assertIn("list content", self.message.reply.await_args.args[0].lower())
         self.assertFalse(self.feature.store.boxes(1)["event"]["entries"])
 
     async def test_fetch_failure_reports_permission_error(self) -> None:
@@ -156,6 +161,42 @@ class DaycareAppendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             self.feature.store.boxes(1)["event"]["entries"]["45258"],
             ["Eevee", "M", 84.95, False],
+        )
+
+    async def test_component_list_and_pages(self) -> None:
+        self.list_message.embeds = []
+        self.list_message.components = [
+            _component_factory({
+                "type": 17,
+                "components": [
+                    {"type": 10, "content": "**Your pokémon**"},
+                    {"type": 10, "content": (
+                        "`42615` <:eevee:123> **Eevee** ♀ • Lvl. 2 • 88.17%\n"
+                        "`40427` <:eevee:123> **Eevee** ♂ • Lvl. 26 • 85.48%"
+                    )},
+                ],
+            })
+        ]
+        await self.feature.box_append(self.message, "event")
+        entries = self.feature.store.boxes(1)["event"]["entries"]
+        self.assertEqual(entries["42615"], ["Eevee", "F", 88.17, False])
+        self.assertEqual(entries["40427"], ["Eevee", "M", 85.48, False])
+        self.message.channel.fetch_message.assert_not_awaited()
+        await self.feature.handle_raw_edit(SimpleNamespace(
+            message_id=42,
+            data={"components": [{"type": 17, "components": [
+                {"type": 10, "content": "`45258` **Eevee** ♂ • Lvl. 39 • 84.95%"}
+            ]}]},
+        ))
+        self.assertEqual(entries["45258"], ["Eevee", "M", 84.95, False])
+
+    async def test_plain_text_list(self) -> None:
+        self.list_message.embeds = []
+        self.list_message.content = "`42615` **Eevee** ♀ • Lvl. 2 • 88.17%"
+        await self.feature.box_append(self.message, "event")
+        self.assertEqual(
+            self.feature.store.boxes(1)["event"]["entries"]["42615"],
+            ["Eevee", "F", 88.17, False],
         )
 
 
