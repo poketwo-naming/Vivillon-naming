@@ -1157,15 +1157,34 @@ class DaycareFeature:
                 f"❌ No box called **{name}**. Create it with `v!box create {name}`.",
             )
             return
-        referenced = await self.resolve_reference(message)
-        if (
-            referenced is None
-            or referenced.author.id != self.poketwo_bot_id
-            or not referenced.embeds
-        ):
+        try:
+            referenced = await self.resolve_reference(message)
+        except discord.HTTPException as error:
+            await self.reply(
+                message,
+                f"❌ Couldn't retrieve the replied-to message (Discord HTTP {error.status}). "
+                "Check that I can view the channel and read message history.",
+            )
+            return
+        if referenced is None:
             await self.reply(
                 message,
                 "Reply to a Pokétwo Pokémon list with `v!box append [name]`.",
+            )
+            return
+        if referenced.author.id != self.poketwo_bot_id:
+            await self.reply(
+                message,
+                "❌ The replied-to message isn't from the configured Pokétwo account. "
+                "Check `POKETWO_BOT_ID` or reply to the Pokétwo list itself.",
+            )
+            return
+        if not referenced.embeds:
+            await self.reply(
+                message,
+                "❌ I can't see an embed on the replied-to message. Reply to the "
+                "Pokétwo list and check that Message Content Intent is enabled and "
+                "approved for this bot.",
             )
             return
         parsed = self.parse_embeds(referenced.embeds)
@@ -1208,15 +1227,14 @@ class DaycareFeature:
         if message.reference is None:
             return None
         resolved = message.reference.resolved
-        if isinstance(resolved, discord.Message):
+        if isinstance(resolved, discord.Message) and (
+            resolved.author.id != self.poketwo_bot_id or resolved.embeds
+        ):
             return resolved
         message_id = message.reference.message_id
         if message_id is None:
             return None
-        try:
-            return await message.channel.fetch_message(message_id)
-        except discord.HTTPException:
-            return None
+        return await message.channel.fetch_message(message_id)
 
     def prune_tracked(self) -> None:
         now = time.monotonic()

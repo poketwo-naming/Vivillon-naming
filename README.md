@@ -39,6 +39,11 @@ approval for privileged intents on larger bots.
 
    `POKETWO_BOT_ID` identifies the account whose spawn messages the bot
    monitors. Generated catch commands target `<@716390085896962058>`.
+   Breeding box imports also require this ID to match the account posting the
+   Pokétwo list. Reply to the list with `v!box append <name>`; use the list's
+   page arrows to add further pages. The bot needs access to the channel and
+   its message history, and the Message Content Intent enabled and approved
+   where Discord requires approval.
 
    The bot responds to commands in server channels and threads. Spawn naming
    requires a premium tier assigned to that server with `v!premium add`; other
