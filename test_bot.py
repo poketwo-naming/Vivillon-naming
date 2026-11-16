@@ -1415,6 +1415,47 @@ class ImageCorrectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved.read_bytes(), b"spawn image")
         self.assertEqual(self.bot.image_matcher.match(b"spawn image"), ("Toedscool", 0))
 
+    async def test_review_buttons_save_embedded_image_without_attachment(self) -> None:
+        for index, name in enumerate(("Pikachu", "Toedscool")):
+            with self.subTest(name=name):
+                interaction = self.review_interaction()
+                interaction.message.id += index
+                interaction.message.attachments = []
+                interaction.message.embeds[0].set_image(
+                    url="https://cdn.discordapp.com/attachments/123/456/spawn.png"
+                )
+                view = bot_module.RecognitionReviewView(self.bot)
+                with patch(
+                    "bot.download_image",
+                    new=AsyncMock(return_value=(b"spawn image", "image/png")),
+                ) as download:
+                    if index == 0:
+                        await view.yes.callback(interaction)
+                    else:
+                        await view.no.callback(interaction)
+                        modal = interaction.response.send_modal.await_args.args[0]
+                        modal.pokemon._value = name
+                        await modal.on_submit(interaction)
+                download.assert_awaited_once_with(
+                    self.bot.image_http,
+                    "https://cdn.discordapp.com/attachments/123/456/spawn.png",
+                )
+                self.assertEqual(
+                    (self.bot.training_data_dir / name / "review-12345.png").read_bytes(),
+                    b"spawn image",
+                )
+                self.assertEqual(self.bot.image_matcher.match(b"spawn image"), (name, 0))
+
+    async def test_review_rejects_non_discord_embedded_image(self) -> None:
+        interaction = self.review_interaction()
+        interaction.message.attachments = []
+        interaction.message.embeds[0].set_image(url="https://example.test/spawn.png")
+        with patch("bot.download_image", new=AsyncMock()) as download:
+            await bot_module.RecognitionReviewView(self.bot).yes.callback(interaction)
+        download.assert_not_awaited()
+        self.assertIn("couldn't save", interaction.followup.send.await_args.args[0])
+        self.assertFalse(self.corrections.exists())
+
     async def test_review_yes_reuses_identical_image_and_teaches_correction(self) -> None:
         interaction = self.review_interaction()
         folder = self.bot.training_data_dir / "Pikachu"

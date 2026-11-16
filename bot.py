@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Final, Literal, TypeGuard, TypedDict, cast
+from urllib.parse import urlsplit
 
 import aiohttp
 import discord
@@ -10848,8 +10849,8 @@ class NamingBot(commands.Bot):
             try:
                 if self.user is None or review.author.id != self.user.id:
                     raise ValueError("Review was not sent by this bot")
-                if not review.embeds or not review.attachments:
-                    raise ValueError("Review image or details are missing")
+                if not review.embeds:
+                    raise ValueError("Review details are missing")
                 embed = review.embeds[0]
                 if len(embed.fields) < 2 or not embed.footer.text:
                     raise ValueError("Review details are incomplete")
@@ -10869,11 +10870,31 @@ class NamingBot(commands.Bot):
                 if folder.resolve().parent != self.training_data_dir.resolve():
                     raise ValueError("Training folder is outside the training directory")
                 folder.mkdir(exist_ok=True)
-                attachment = review.attachments[0]
-                extension = Path(attachment.filename).suffix.lower()
-                if extension not in IMAGE_SUFFIXES:
-                    raise ValueError("Review image has an unsupported format")
-                image = await attachment.read()
+                if review.attachments:
+                    attachment = review.attachments[0]
+                    extension = Path(attachment.filename).suffix.lower()
+                    if extension not in IMAGE_SUFFIXES:
+                        raise ValueError("Review image has an unsupported format")
+                    image = await attachment.read()
+                else:
+                    image_url = embed.image.url
+                    if not image_url or self.image_http is None:
+                        raise ValueError("Review image is unavailable")
+                    parsed_url = urlsplit(image_url)
+                    if (
+                        parsed_url.scheme != "https"
+                        or parsed_url.netloc not in {"cdn.discordapp.com", "media.discordapp.net"}
+                        or not parsed_url.path.startswith("/attachments/")
+                    ):
+                        raise ValueError("Review image is not a Discord attachment")
+                    image, content_type = await download_image(self.image_http, image_url)
+                    extension = {
+                        "image/png": ".png",
+                        "image/jpeg": ".jpg",
+                        "image/webp": ".webp",
+                    }.get(content_type)
+                    if extension is None:
+                        raise ValueError(f"Unsupported review image type: {content_type}")
                 if not image:
                     raise ValueError("Review image is empty")
                 image_path = folder / f"review-{spawn_id}{extension}"
