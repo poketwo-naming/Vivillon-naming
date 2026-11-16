@@ -298,6 +298,14 @@ def compute_descriptors(
     return descriptors
 
 
+def decoded_image_hash(image) -> str:
+    """Hash decoded pixels including their dimensions and data type."""
+    digest = hashlib.sha256()
+    digest.update(f"{image.shape}:{image.dtype.str}:".encode("ascii"))
+    digest.update(image.tobytes())
+    return digest.hexdigest()
+
+
 def foreground_mask(data: bytes):
     """Mask the Pokémon using its alpha channel or a GrabCut cutout."""
     image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
@@ -743,6 +751,7 @@ class ImageMatcher:
         self.labels = None
         self.matcher = None
         self.exact_references: dict[str, str] = {}
+        self.decoded_references: dict[str, str] = {}
         self.corrected_references: dict[str, str] = {}
         if cv2 is None or not bank_path.is_file():
             return
@@ -769,10 +778,28 @@ class ImageMatcher:
                         str(digest): self.names[int(label)]
                         for digest, label in zip(hashes, labels)
                     }
+                if "decoded_hashes" in data or "decoded_labels" in data:
+                    hashes = data["decoded_hashes"]
+                    labels = data["decoded_labels"]
+                    if (
+                        hashes.ndim != 1
+                        or labels.ndim != 1
+                        or len(hashes) != len(labels)
+                        or labels.dtype.kind not in "iu"
+                        or any(re.fullmatch(r"[0-9a-f]{64}", str(value)) is None for value in hashes)
+                        or any(int(label) >= len(self.names) or int(label) < 0 for label in labels)
+                        or len(set(str(value) for value in hashes)) != len(hashes)
+                    ):
+                        raise ValueError("Invalid decoded reference index")
+                    self.decoded_references = {
+                        str(digest): self.names[int(label)]
+                        for digest, label in zip(hashes, labels)
+                    }
         except (OSError, ValueError, KeyError):
             logger.warning("Could not read %s; image matching disabled", bank_path)
             self.names = []
             self.exact_references = {}
+            self.decoded_references = {}
             return
         cv2.setRNGSeed(0)
         self.matcher = cv2.FlannBasedMatcher(
@@ -804,6 +831,12 @@ class ImageMatcher:
             exact = self.exact_references.get(digest)
             if exact is not None:
                 return DISPLAY_NAMES.get(exact, exact), 0
+        if self.decoded_references:
+            image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+            if image is not None:
+                decoded = self.decoded_references.get(decoded_image_hash(image))
+                if decoded is not None:
+                    return DISPLAY_NAMES.get(decoded, decoded), 0
         if not self.names or self.matcher is None:
             return None
         mask = self._transparency_mask(data)

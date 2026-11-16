@@ -721,11 +721,14 @@ for fast exact-byte matches, use a separate output file:
 python build_image_bank.py pokemon_images image_bank.new.npz --merge-existing image_bank.npz --index-all-references
 ```
 
-Check the result before replacing the existing bank. Folder names are not
-independently verified; incorrect labels can cause incorrect exact matches.
+The bank also indexes identical decoded pixels, so losslessly re-encoded images
+can match without byte-identical files. Check the result before replacing the
+existing bank. Folder names are not independently verified; incorrect labels can
+cause incorrect exact matches.
 Identical images assigned conflicting names are excluded unless a label has
-been explicitly confirmed; ambiguous composite folders are also excluded.
-Resized or re-encoded images still use regular recognition.
+been explicitly confirmed; conflicting decoded images and ambiguous composite
+folders are also excluded. Resized or lossy re-encoded images still use regular
+recognition.
 
 Reference-image matching checks both the original and horizontally flipped
 spawn image, so Pokémon can be recognized facing either direction without

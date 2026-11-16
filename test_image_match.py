@@ -108,6 +108,64 @@ class ImageMatcherTests(unittest.TestCase):
         np.testing.assert_array_equal(hashes, [digest])
         np.testing.assert_array_equal(labels, [1])
 
+    def test_decoded_reference_matches_lossless_reencoding(self) -> None:
+        from build_image_bank import decoded_reference_index
+
+        cv2 = image_match.cv2
+        np = image_match.np
+        image = np.random.default_rng(42).integers(0, 256, (16, 16, 3), dtype=np.uint8)
+        first = cv2.imencode(".png", image, [cv2.IMWRITE_PNG_COMPRESSION, 0])[1].tobytes()
+        second = cv2.imencode(".png", image, [cv2.IMWRITE_PNG_COMPRESSION, 9])[1].tobytes()
+        self.assertNotEqual(first, second)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "reference.png"
+            path.write_bytes(first)
+            hashes, labels = decoded_reference_index(
+                {"Pikachu": [path]}, ["Pikachu"],
+                np.array([hashlib.sha256(first).hexdigest()]), np.array([0]),
+            )
+            bank = Path(directory) / "bank.npz"
+            np.savez(
+                bank,
+                descriptors=np.zeros((8, 128), dtype=np.uint8),
+                labels=np.zeros(8, dtype=np.int32),
+                names=np.array(["Pikachu"]),
+                decoded_hashes=hashes,
+                decoded_labels=labels,
+            )
+            matcher = ImageMatcher(bank)
+            self.assertEqual(matcher.match(second), ("Pikachu", 0))
+            image[0, 0, 0] ^= 1
+            changed = cv2.imencode(".png", image)[1].tobytes()
+            with patch("image_match.compute_descriptors", return_value=None):
+                with patch("image_match.foreground_mask", return_value=None):
+                    self.assertIsNone(matcher.match(changed))
+
+    def test_decoded_reference_excludes_different_labels_and_untrusted_bytes(self) -> None:
+        from build_image_bank import decoded_reference_index
+
+        cv2 = image_match.cv2
+        np = image_match.np
+        image = np.zeros((16, 16, 3), dtype=np.uint8)
+        first = cv2.imencode(".png", image, [cv2.IMWRITE_PNG_COMPRESSION, 0])[1].tobytes()
+        second = cv2.imencode(".png", image, [cv2.IMWRITE_PNG_COMPRESSION, 9])[1].tobytes()
+        with tempfile.TemporaryDirectory() as directory:
+            first_path = Path(directory) / "first.png"
+            second_path = Path(directory) / "second.png"
+            first_path.write_bytes(first)
+            second_path.write_bytes(second)
+            groups = {"Pikachu": [first_path], "Eevee": [second_path]}
+            digests = np.array([hashlib.sha256(data).hexdigest() for data in (first, second)])
+            for trusted_hashes, trusted_labels in (
+                (digests, np.array([0, 1])),
+                (digests[:1], np.array([0])),
+            ):
+                hashes, labels = decoded_reference_index(
+                    groups, ["Pikachu", "Eevee"], trusted_hashes, trusted_labels
+                )
+                self.assertEqual(len(hashes), 0)
+                self.assertEqual(len(labels), 0)
+
     def test_merge_bank_preserves_old_features_and_adds_new_labels(self) -> None:
         from build_image_bank import merge_existing_bank
 

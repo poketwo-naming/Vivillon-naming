@@ -25,6 +25,7 @@ from image_match import (
     SHARED_DISTANCE,
     compute_descriptors,
     consensus_descriptors,
+    decoded_image_hash,
     drop_duplicates,
     foreground_mask,
     reference_images,
@@ -95,6 +96,40 @@ def exact_reference_index(
     return (
         np.array(hashes, dtype="U64"),
         np.array([indices[owners[digest]] for digest in hashes], dtype=np.int32),
+    )
+
+
+def decoded_reference_index(
+    groups: dict[str, list[Path]],
+    names: list[str],
+    exact_hashes: np.ndarray,
+    exact_labels: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    exact_owners = {
+        str(digest): names[int(label)]
+        for digest, label in zip(exact_hashes, exact_labels)
+    }
+    indices = {name: index for index, name in enumerate(names)}
+    owners: dict[str, str | None] = {}
+    for paths in groups.values():
+        for path in paths:
+            data = path.read_bytes()
+            image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+            if image is None:
+                raise ValueError(f"Cannot decode reference image {path}")
+            pixel_hash = decoded_image_hash(image)
+            owner = exact_owners.get(hashlib.sha256(data).hexdigest())
+            if pixel_hash not in owners:
+                owners[pixel_hash] = owner
+            elif owners[pixel_hash] != owner:
+                owners[pixel_hash] = None
+    valid = sorted((digest, owner) for digest, owner in owners.items() if owner is not None)
+    excluded = len(owners) - len(valid)
+    if excluded:
+        logger.warning("Excluded %d decoded references with conflicting or untrusted labels", excluded)
+    return (
+        np.array([digest for digest, _ in valid], dtype="U64"),
+        np.array([indices[owner] for _, owner in valid], dtype=np.int32),
     )
 
 
@@ -343,14 +378,18 @@ def main() -> None:
                 [merged_indices[reference_names[index]] for index in reference_labels],
                 dtype=np.int32,
             )
-    np.savez_compressed(
-        output,
+    bank = dict(
         descriptors=descriptors,
         labels=labels,
         names=np.array(names),
         exact_hashes=exact_hashes,
         exact_labels=exact_labels,
     )
+    if args.index_all_references:
+        bank["decoded_hashes"], bank["decoded_labels"] = decoded_reference_index(
+            groups, names, exact_hashes, exact_labels
+        )
+    np.savez_compressed(output, **bank)
     print(f"Wrote {output}: {len(names)} Pokémon, {len(descriptors)} features")
 
 
