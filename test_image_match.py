@@ -60,6 +60,54 @@ class ImageMatcherTests(unittest.TestCase):
         self.assertEqual(len(hashes), 0)
         self.assertEqual(len(labels), 0)
 
+    def test_all_reference_index_includes_unambiguous_regular_images(self) -> None:
+        from build_image_bank import exact_reference_index
+
+        cv2 = image_match.cv2
+        np = image_match.np
+        first = cv2.imencode(".png", np.zeros((16, 16, 3), dtype=np.uint8))[1].tobytes()
+        second = cv2.imencode(".png", np.full((16, 16, 3), 255, dtype=np.uint8))[1].tobytes()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pika = root / "Pikachu" / "1.png"
+            eevee = root / "Eevee" / "1.png"
+            conflict = root / "Eevee" / "2.png"
+            for path, data in ((pika, first), (eevee, second), (conflict, first)):
+                path.parent.mkdir(exist_ok=True)
+                path.write_bytes(data)
+            hashes, labels = exact_reference_index(
+                {"Pikachu": [pika], "Eevee": [eevee, conflict]},
+                ["Eevee", "Pikachu"],
+                include_all=True,
+            )
+
+        np.testing.assert_array_equal(hashes, [hashlib.sha256(second).hexdigest()])
+        np.testing.assert_array_equal(labels, [0])
+
+    def test_confirmed_exact_label_resolves_conflicting_image(self) -> None:
+        from build_image_bank import exact_reference_index
+
+        cv2 = image_match.cv2
+        np = image_match.np
+        encoded = cv2.imencode(".png", np.zeros((16, 16, 3), dtype=np.uint8))[1].tobytes()
+        digest = hashlib.sha256(encoded).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pika = root / "Pikachu" / "1.png"
+            eevee = root / "Eevee" / "1.png"
+            for path in (pika, eevee):
+                path.parent.mkdir()
+                path.write_bytes(encoded)
+            with patch("build_image_bank.CONFIRMED_EXACT_REFERENCE_NAMES", {digest: "Eevee"}):
+                hashes, labels = exact_reference_index(
+                    {"Pikachu": [pika], "Eevee": [eevee]},
+                    ["Pikachu", "Eevee"],
+                    include_all=True,
+                )
+
+        np.testing.assert_array_equal(hashes, [digest])
+        np.testing.assert_array_equal(labels, [1])
+
     def test_merge_bank_preserves_old_features_and_adds_new_labels(self) -> None:
         from build_image_bank import merge_existing_bank
 

@@ -47,33 +47,50 @@ BACKGROUND_SAMPLE = 120
 # as part of the Pokémon (Swinub's snow forest made it name every snowy spawn).
 EXCLUDED_REFERENCES = {"Swinub": {"7.png", "13.png"}, "Snom": {"7.png"}}
 
+# User-confirmed labels for identical files that appear under multiple names.
+CONFIRMED_EXACT_REFERENCE_NAMES = {
+    "a7a9d5a7bdc0e6ba1fb05c3a2c6d62a9beb42b095e59a11601ef5be2a8c7d2a2": "Fire Arceus",
+    "a5b5ce41c65496c1fc6ced76b8a1a729893725e729ebc5ad0342e9239da7ac60": "Fire Arceus",
+    "05147a992a64a1dd813d0449c7f5607e2771d9d8fac0353c8629dae2fbe6213c": "Gliding Build Koraidon",
+    "91506c902788fe9770f7228496599465e6a9ffacd4abcc87069e2bdfee60150f": "Steel Silvally",
+}
+
 logger = logging.getLogger(__name__)
 
 
 def exact_reference_index(
-    groups: dict[str, list[Path]], names: list[str]
+    groups: dict[str, list[Path]], names: list[str], *, include_all: bool = False
 ) -> tuple[np.ndarray, np.ndarray]:
     indices = {name: index for index, name in enumerate(names)}
     owners: dict[str, str] = {}
     conflicts: set[str] = set()
+    confirmed: set[str] = set()
     for name, paths in groups.items():
         for path in paths:
-            if not path.name.startswith("user-reference-"):
+            if not include_all and not path.name.startswith("user-reference-"):
                 continue
             data = path.read_bytes()
             image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
             if image is None:
                 raise ValueError(f"Cannot decode exact reference image {path}")
             digest = hashlib.sha256(data).hexdigest()
+            if CONFIRMED_EXACT_REFERENCE_NAMES.get(digest) == name:
+                confirmed.add(digest)
             previous = owners.get(digest)
             if previous is not None and previous != name:
                 conflicts.add(digest)
             else:
                 owners[digest] = name
     for digest in conflicts:
-        del owners[digest]
-    if conflicts:
-        logger.warning("Excluded %d exact references with conflicting names", len(conflicts))
+        if digest in confirmed:
+            owners[digest] = CONFIRMED_EXACT_REFERENCE_NAMES[digest]
+        else:
+            del owners[digest]
+    unresolved = len(conflicts - confirmed)
+    if unresolved:
+        logger.warning("Excluded %d exact references with conflicting names", unresolved)
+    if conflicts & confirmed:
+        logger.info("Resolved %d exact references using confirmed labels", len(conflicts & confirmed))
     hashes = sorted(owners)
     return (
         np.array(hashes, dtype="U64"),
@@ -270,6 +287,11 @@ def main() -> None:
         metavar="BANK",
         help="preserve BANK's features and add only newly encountered Pokémon labels",
     )
+    parser.add_argument(
+        "--index-all-references",
+        action="store_true",
+        help="index every labelled reference image for exact-byte matching",
+    )
     args = parser.parse_args()
     folder = Path(args.folder)
     output = Path(args.output)
@@ -299,8 +321,13 @@ def main() -> None:
             print(f"[{number}/{len(names)}] {name}: {len(per_pokemon[name])} features", flush=True)
 
     descriptors, labels = assemble_bank(names, per_pokemon)
-    exact_hashes, exact_labels = exact_reference_index(groups, names)
+    exact_hashes, exact_labels = exact_reference_index(
+        groups, names, include_all=args.index_all_references
+    )
     if args.merge_existing is not None:
+        reference_names = names
+        reference_hashes = exact_hashes
+        reference_labels = exact_labels
         descriptors, labels, names, exact_hashes, exact_labels = merge_existing_bank(
             descriptors,
             labels,
@@ -309,6 +336,13 @@ def main() -> None:
             exact_labels,
             args.merge_existing,
         )
+        if args.index_all_references:
+            merged_indices = {name: index for index, name in enumerate(names)}
+            exact_hashes = reference_hashes
+            exact_labels = np.array(
+                [merged_indices[reference_names[index]] for index in reference_labels],
+                dtype=np.int32,
+            )
     np.savez_compressed(
         output,
         descriptors=descriptors,

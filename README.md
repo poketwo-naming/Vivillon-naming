@@ -691,7 +691,7 @@ including any tracked `user-reference-*` copy and any copy in the ignored
 archive, then rebuild the bank. Removing only one copy can leave the other
 in the bank. Restart the bot after rebuilding.
 
-You can place a bulk archive of per-Pokémon image folders anywhere under `pokemon_images/` (for example `pokemon_images/archive/`). The builder searches recursively, merges duplicate folders, skips ambiguous composite images, and recognizes species, known forms, regional forms and event-costume names. Raw archive images are git-ignored; only upload the generated bank.
+You can place a bulk archive of per-Pokémon image folders anywhere under `pokemon_images/` (for example `pokemon_images/archive/`). The builder searches recursively, merges duplicate folders, skips ambiguous composite images, and recognizes species, known forms, regional forms and event-costume names. New archive files are git-ignored by default; force-adding the archive can greatly increase repository size.
 Gender-coded folders such as `nidoran-f` and `nidoran-m` retain their separate
 Nidoran labels; mixed Nidoran composites are skipped as ambiguous.
 
@@ -713,6 +713,19 @@ python build_image_bank.py
 ```
 
 This writes `image_bank.npz`. Only the changed Pokémon are recomputed on later runs (cached in `.bank_cache/`). The bot loads `image_bank.npz` next to `bot.py` at startup, or the path configured by `IMAGE_BANK_FILE`; it logs the exact loaded path. The pictures themselves don't need to be on the host. Upload `image_bank.npz`, `image_match.py` and `bot.py`, then restart.
+
+To preserve the existing feature bank while indexing all labelled references
+for fast exact-byte matches, use a separate output file:
+
+```
+python build_image_bank.py pokemon_images image_bank.new.npz --merge-existing image_bank.npz --index-all-references
+```
+
+Check the result before replacing the existing bank. Folder names are not
+independently verified; incorrect labels can cause incorrect exact matches.
+Identical images assigned conflicting names are excluded unless a label has
+been explicitly confirmed; ambiguous composite folders are also excluded.
+Resized or re-encoded images still use regular recognition.
 
 Reference-image matching checks both the original and horizontally flipped
 spawn image, so Pokémon can be recognized facing either direction without
