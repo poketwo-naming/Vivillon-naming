@@ -147,15 +147,22 @@ calibrated probability. Real-spawn guesses at or below 50% are appended to
 `pokemon_confidence.csv` in the project root, creating it with a header if needed.
 Real spawns below 50%, spawns that cannot be identified, and spawns matching a
 name in that CSV are saved to `pokemon_confidence_review/` for manual review.
-The filename includes the message ID and guessed name (or `unknown`); check the
-image and move it into the correct `pokemon_images/<Pokémon name>/` folder.
-Moving an image does not automatically update recognition: rebuild and deploy
-the image bank as described below, then restart the bot. Images are stored on
-the machine running the bot, not automatically in GitHub or your Codespace.
+The filename includes the message ID and guessed name (or `unknown`).
+For real guesses below 50%, the bot also sends the spawn image and a Yes/No
+question to channel `1531476097970212915`. The bot owner can confirm the guess
+with Yes or choose No and type the correct Pokémon name. The image is saved in
+that Pokémon's folder under `pokemon training/training_data/`, and identical
+image bytes are recognized immediately, including after a restart. To improve
+matching for other images, rebuild and deploy the image bank as described below,
+then restart the bot. Review buttons remain usable after bot restarts.
+Images are stored on the machine running the bot, not automatically in GitHub
+or your Codespace. Set `POKEMON_TRAINING_DIR` to use another directory; it must
+already exist. For containers, mount a persistent volume for that directory.
 For containers, mount persistent storage and set
 `POKEMON_CONFIDENCE_REVIEW_DIR` to a directory on that mount, such as
 `/data/pokemon_confidence_review`.
-The bot owner can reply to a recognition alert with `v!correct <correct name>`
+The bot owner can also reply to a recognition-failure alert or an older
+low-accuracy text alert with `v!correct <correct name>`
 (for example, `v!correct Zygarde Core`). The bot retrieves the original spawn
 image, records its SHA-256 hash, corrected name, previous guess and confidence
 in `data/pokemon_corrections.csv`, and immediately uses that name for identical
@@ -173,9 +180,8 @@ and markings to identify Pokémon across the National Pokédex and distinguish
 similar species and forms. It distinguishes Finizen from Palafin by checking
 for Palafin's red, heart-shaped chest/underside mark when visible. Image
 recognition can still make mistakes, so check guesses before relying on them.
-Guesses below 50% are still named, and a
-low-accuracy alert mentioning the configured alert recipient, with the
-confidence and source link, is sent to the recognition alert channel. An
+Guesses below 50% are still named, and an image review with the confidence and
+source link is sent to the recognition alert channel without a ping. An
 agreeing local match with sufficient feature votes raises a low-confidence
 vision guess to at least 85%. An unverified Vivillon form prediction is
 still named at low confidence. It then
@@ -687,24 +693,28 @@ curl -X POST https://YOUR-HOST:PORT/api/org/reserves \
 
 ## Reference images (faster recognition)
 
-Put each Pokémon's spawn pictures in its own folder inside `pokemon_images/`, named exactly like the Pokémon (`pokemon_images/Abomasnow/`, `pokemon_images/Mega Absol/`). Use real spawn images Pokétwo posts, ideally with different backgrounds (about 10 to 25 each).
+Put each Pokémon's spawn pictures in its own folder inside
+`pokemon training/training_data/`, named exactly like the Pokémon (for example
+`pokemon training/training_data/Abomasnow/`). Use real spawn images Pokétwo
+posts, ideally with different backgrounds (about 10 to 25 each).
 
 Files named `user-reference-*` are indexed separately as exact byte-for-byte
 references, rather than adding their features to the general bank. An exact
 image gets its assigned name; a resized or re-encoded image still uses regular
 recognition. If identical files have conflicting names, they are excluded from
 the exact index and a warning is logged.
-When removing an incorrect image, remove every copy under `pokemon_images/`,
-including any tracked `user-reference-*` copy and any copy in the ignored
-archive, then rebuild the bank. Removing only one copy can leave the other
-in the bank. Restart the bot after rebuilding.
+When removing an incorrect image, remove every copy under the training folder,
+then rebuild the bank. Removing only one copy can leave the other in the bank.
+Restart the bot after rebuilding.
 
-You can place a bulk archive of per-Pokémon image folders anywhere under `pokemon_images/` (for example `pokemon_images/archive/`). The builder searches recursively, merges duplicate folders, skips ambiguous composite images, and recognizes species, known forms, regional forms and event-costume names. New archive files are git-ignored by default; force-adding the archive can greatly increase repository size.
+The builder searches the training folder recursively, merges duplicate folders,
+skips ambiguous composite images, and recognizes species, known forms,
+regional forms and event-costume names.
 Gender-coded folders such as `nidoran-f` and `nidoran-m` retain their separate
 Nidoran labels; mixed Nidoran composites are skipped as ambiguous.
 
 Hand-added special forms can use a folder named for the form, such as
-`pokemon_images/Gliding Build Koraidon/image.png`. Add its form-to-species entry
+`pokemon training/training_data/Gliding Build Koraidon/image.png`. Add its form-to-species entry
 to `CUSTOM_FORM_SPECIES` in `image_match.py` when catch commands should use the
 base species. A matching alphanumeric filename in `assets/thumbnails/` supplies
 the catch-card and normal-starboard artwork. This also supports themed variants
@@ -717,19 +727,18 @@ label when the visible image supports it.
 Build the feature file after adding images:
 
 ```
-python build_image_bank.py
+python build_image_bank.py "pokemon training/training_data" image_bank.new.npz --index-all-references
 ```
 
-This writes `image_bank.npz`. Only the changed Pokémon are recomputed on later runs (cached in `.bank_cache/`). The bot loads `image_bank.npz` next to `bot.py` at startup, or the path configured by `IMAGE_BANK_FILE`; it logs the exact loaded path. The pictures themselves don't need to be on the host. Upload `image_bank.npz`, `image_match.py` and `bot.py`, then restart.
+The command builds from the training folder only and writes a separate
+`image_bank.new.npz`; it does not merge the old bank. Only changed Pokémon are
+recomputed on later runs (cached in `.bank_cache/`). Check the result, replace
+`image_bank.npz` with the new file, deploy it, and restart the bot. The bot loads
+`image_bank.npz` next to `bot.py` at startup, or the path configured by
+`IMAGE_BANK_FILE`; it logs the exact loaded path. The training directory must
+also be available and writable on the bot host to save reviewed images.
 
-To preserve the existing feature bank while indexing all labelled references
-for fast exact-byte matches, use a separate output file:
-
-```
-python build_image_bank.py pokemon_images image_bank.new.npz --merge-existing image_bank.npz --index-all-references
-```
-
-The bank also indexes identical decoded pixels, so losslessly re-encoded images
+The bank indexes identical decoded pixels, so losslessly re-encoded images
 can match without byte-identical files. Check the result before replacing the
 existing bank. Folder names are not independently verified; incorrect labels can
 cause incorrect exact matches.

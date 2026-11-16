@@ -1,8 +1,7 @@
-"""Build image_bank.npz from the pictures in pokemon_images/.
+"""Build image_bank.npz from the pictures in pokemon training/training_data/.
 
 Run this where the pictures are (not on the host):
-    python build_image_bank.py [pokemon_images_folder] [output_file]
-    python build_image_bank.py [pokemon_images_folder] [output_file] --merge-existing image_bank.npz
+    python build_image_bank.py [training_data_folder] [output_file]
 
 Per-Pokémon results are cached in .bank_cache/, so after adding or changing a
 Pokémon only that one is recomputed. The merge option preserves existing
@@ -20,6 +19,7 @@ from image_match import (
     family_name,
     BANK_FILE,
     FEATURES_PER_IMAGE,
+    IMAGE_SUFFIXES,
     MAX_SIDE,
     MAX_FEATURES_PER_POKEMON,
     SHARED_DISTANCE,
@@ -137,8 +137,11 @@ def background_pool(folder: Path, exclude: set[str]):
     """Raw features of many other Pokémon's pictures, mostly scenery."""
     numbered = sorted(
         path
-        for path in folder.rglob("*.png")
-        if path.stem.isdigit() and path.parent.name not in exclude
+        for path in folder.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in IMAGE_SUFFIXES
+        and path.stem.isdigit()
+        and path.parent.name not in exclude
     )
     step = max(1, len(numbered) // BACKGROUND_SAMPLE)
     sets = [
@@ -146,6 +149,8 @@ def background_pool(folder: Path, exclude: set[str]):
         for found in (compute_descriptors(p.read_bytes()) for p in numbered[::step])
         if found is not None
     ]
+    if not sets:
+        raise ValueError(f"No usable numbered background images found in {folder}")
     return np.vstack(sets).astype(np.float32)
 
 
@@ -314,7 +319,11 @@ def merge_existing_bank(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("folder", nargs="?", default="pokemon_images")
+    parser.add_argument(
+        "folder",
+        nargs="?",
+        default=str(Path(__file__).parent / "pokemon training" / "training_data"),
+    )
     parser.add_argument("output", nargs="?", default=BANK_FILE)
     parser.add_argument(
         "--merge-existing",

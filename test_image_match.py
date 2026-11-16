@@ -1,4 +1,6 @@
 import hashlib
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +22,51 @@ def require_match(value: T | None) -> T:
 
 @unittest.skipIf(image_match.cv2 is None, "OpenCV is not installed")
 class ImageMatcherTests(unittest.TestCase):
+    def test_build_training_bank_from_jpegs_and_reviewed_image(self) -> None:
+        cv2 = image_match.cv2
+        np = image_match.np
+        builder = Path(__file__).with_name("build_image_bank.py")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "training_data"
+            samples = {}
+            for index, name in enumerate(("Pikachu", "Eevee")):
+                folder = source / name
+                folder.mkdir(parents=True)
+                for number in range(2):
+                    image = np.random.default_rng(index).integers(
+                        0, 256, (120, 120, 3), dtype=np.uint8
+                    )
+                    data = cv2.imencode(".jpg", image)[1].tobytes()
+                    (folder / f"{number}.jpg").write_bytes(data)
+                    samples[name] = data
+            (source / "Pikachu" / "review-123.jpg").write_bytes(samples["Pikachu"])
+            bank = root / "bank.npz"
+            subprocess.run(
+                [sys.executable, str(builder), str(source), str(bank), "--index-all-references"],
+                cwd=root,
+                check=True,
+                text=True,
+                timeout=60,
+            )
+            matcher = ImageMatcher(bank)
+            self.assertEqual(matcher.match(samples["Pikachu"]), ("Pikachu", 0))
+            self.assertEqual(matcher.match(samples["Eevee"]), ("Eevee", 0))
+
+    def test_background_pool_samples_numbered_jpegs(self) -> None:
+        from build_image_bank import background_pool
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "Pikachu" / "123.jpg"
+            path.parent.mkdir()
+            path.write_bytes(b"jpeg")
+            descriptors = image_match.np.ones((2, 128), dtype=image_match.np.float32)
+            with patch("build_image_bank.compute_descriptors", return_value=descriptors) as compute:
+                pool = background_pool(root, set())
+        compute.assert_called_once_with(b"jpeg")
+        self.assertEqual(pool.shape, (2, 128))
+
     def test_exact_reference_does_not_match_another_image(self) -> None:
         np = image_match.np
         image = b"trusted reference bytes"

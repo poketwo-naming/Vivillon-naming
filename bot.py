@@ -7441,6 +7441,59 @@ def bingo_display_name(message: discord.Message, user_id: int) -> str:
     return discord.utils.escape_markdown(discord.utils.escape_mentions(name))
 
 
+class RecognitionReviewModal(discord.ui.Modal, title="Correct Pokémon"):
+    pokemon = discord.ui.TextInput(label="Which Pokémon is this?", max_length=100)
+
+    def __init__(self, bot: "NamingBot", message: discord.Message) -> None:
+        super().__init__()
+        self.bot = bot
+        self.review_message = message
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await self.bot.save_recognition_review(
+            interaction, self.review_message, str(self.pokemon)
+        )
+
+
+class RecognitionReviewView(discord.ui.View):
+    def __init__(self, bot: "NamingBot") -> None:
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        try:
+            owner = await self.bot.is_application_owner(interaction.user.id)
+        except discord.HTTPException:
+            logger.exception("Could not verify the bot owner for recognition review")
+            await interaction.response.send_message(
+                "I couldn't verify the bot owner. Check the logs.", ephemeral=True
+            )
+            return False
+        if not owner:
+            await interaction.response.send_message(
+                "Only the bot owner can review images.", ephemeral=True
+            )
+        return owner
+
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.success, custom_id="recognition-review:yes")
+    async def yes(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if interaction.message is None or not interaction.message.embeds:
+            await interaction.response.send_message("This review is unavailable.", ephemeral=True)
+            return
+        embed = interaction.message.embeds[0]
+        if not embed.fields:
+            await interaction.response.send_message("This review is unavailable.", ephemeral=True)
+            return
+        await self.bot.save_recognition_review(interaction, interaction.message, embed.fields[0].value)
+
+    @discord.ui.button(label="No", style=discord.ButtonStyle.danger, custom_id="recognition-review:no")
+    async def no(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if interaction.message is None:
+            await interaction.response.send_message("This review is unavailable.", ephemeral=True)
+            return
+        await interaction.response.send_modal(RecognitionReviewModal(self.bot, interaction.message))
+
+
 class NamingBot(commands.Bot):
     def __init__(self, config: Config) -> None:
         intents = discord.Intents.default()
@@ -7476,6 +7529,14 @@ class NamingBot(commands.Bot):
         self.image_matcher.corrected_references.update(
             load_image_corrections(self.image_corrections_path)
         )
+        self.training_data_dir = Path(
+            os.environ.get(
+                "POKEMON_TRAINING_DIR",
+                str(Path(__file__).parent / "pokemon training" / "training_data"),
+            )
+        )
+        self.recognition_review_locks: dict[int, asyncio.Lock] = {}
+        self.completed_recognition_reviews: set[int] = set()
         self.handled_spawn_ids: dict[int, None] = {}
         self.handled_catch_ids: dict[int, None] = {}
         self.handled_bingo_reward_ids: dict[int, None] = {}
@@ -8613,6 +8674,7 @@ class NamingBot(commands.Bot):
         logger.info("Music Activity listening on port %s", port)
 
     async def setup_hook(self) -> None:
+        self.add_view(RecognitionReviewView(self))
         try:
             await self.load_extension("jishaku")
         except commands.ExtensionError:
@@ -10608,6 +10670,98 @@ class NamingBot(commands.Bot):
                 message_id,
             )
 
+    async def save_recognition_review(
+        self, interaction: discord.Interaction, review: discord.Message, raw_name: str
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+        async with self.recognition_review_locks.setdefault(review.id, asyncio.Lock()):
+            if review.id in self.completed_recognition_reviews:
+                await interaction.followup.send("This image has already been reviewed.", ephemeral=True)
+                return
+            lookup = known_name_lookup().copy()
+            lookup.update(
+                {normalize_pokemon_alias(name): name for name in self.image_matcher.entries}
+            )
+            lookup.update(
+                {normalize_pokemon_alias(display): form for form, display in FORM_DISPLAY_NAMES.items()}
+            )
+            name = lookup.get(normalize_pokemon_alias(canonicalize_pokemon_name(raw_name)))
+            if name is None or any(char in name for char in ("/", "\\", "\x00")) or name in {".", ".."}:
+                await interaction.followup.send(
+                    "I don't recognize that Pokémon name. Check its spelling and try again.",
+                    ephemeral=True,
+                )
+                return
+            if name.islower():
+                name = name.title()
+            try:
+                if self.user is None or review.author.id != self.user.id:
+                    raise ValueError("Review was not sent by this bot")
+                if not review.embeds or not review.attachments:
+                    raise ValueError("Review image or details are missing")
+                embed = review.embeds[0]
+                if len(embed.fields) < 2 or not embed.footer.text:
+                    raise ValueError("Review details are incomplete")
+                spawn_id = embed.footer.text
+                if not spawn_id.isdecimal():
+                    raise ValueError("Review spawn ID is invalid")
+                if not self.training_data_dir.is_dir():
+                    raise ValueError(f"Training directory does not exist: {self.training_data_dir}")
+                matches = [
+                    folder for folder in self.training_data_dir.iterdir()
+                    if folder.is_dir()
+                    and normalize_pokemon_alias(folder.name) == normalize_pokemon_alias(name)
+                ]
+                if len(matches) > 1:
+                    raise ValueError(f"Multiple training folders match {name}")
+                folder = matches[0] if matches else self.training_data_dir / name
+                if folder.resolve().parent != self.training_data_dir.resolve():
+                    raise ValueError("Training folder is outside the training directory")
+                folder.mkdir(exist_ok=True)
+                attachment = review.attachments[0]
+                extension = Path(attachment.filename).suffix.lower()
+                if extension not in {".png", ".jpg", ".jpeg", ".webp"}:
+                    raise ValueError("Review image has an unsupported format")
+                image = await attachment.read()
+                if not image:
+                    raise ValueError("Review image is empty")
+                image_path = folder / f"review-{spawn_id}{extension}"
+                if image_path.exists() and image_path.read_bytes() != image:
+                    raise ValueError(f"Different image already exists at {image_path}")
+                image_path.write_bytes(image)
+                digest = hashlib.sha256(image).hexdigest()
+                append_image_correction(
+                    self.image_corrections_path,
+                    {
+                        "image_sha256": digest,
+                        "correct_name": name,
+                        "source_message_id": spawn_id,
+                        "previous_guess": embed.fields[0].value,
+                        "previous_confidence": embed.fields[1].value.removesuffix("%"),
+                        "corrected_by": str(interaction.user.id),
+                        "alert_message_id": str(review.id),
+                    },
+                )
+                self.image_matcher.corrected_references[digest] = name
+                self.completed_recognition_reviews.add(review.id)
+            except (discord.HTTPException, aiohttp.ClientError, OSError, ValueError):
+                logger.exception("Could not save recognition review %s", review.id)
+                await interaction.followup.send(
+                    "I couldn't save this image to the training folder. Check the bot logs.",
+                    ephemeral=True,
+                )
+                return
+            try:
+                await review.edit(view=None)
+            except discord.HTTPException:
+                logger.exception("Could not disable recognition review %s", review.id)
+            await interaction.followup.send(
+                f"Saved **{display_pokemon_name(name)}** to the training folder. "
+                "Identical images are recognized immediately; rebuild the image bank "
+                "to learn from this image for other spawns.",
+                ephemeral=True,
+            )
+
     async def report_low_accuracy(
         self, message: discord.Message, name: str, confidence: float
     ) -> None:
@@ -10622,18 +10776,29 @@ class NamingBot(commands.Bot):
         ):
             channel_ids.append(configured_channel_id)
 
-        content = (
-            f"<@{RECOGNITION_ALERT_USER_ID}> ⚠️ Low accuracy: "
-            f"**{display_pokemon_name(name)}** at "
-            f"{confidence:.2f}% (below {LOW_ACCURACY_THRESHOLD}%)\n"
-            f"{message.jump_url}"
+        url = image_url(message)
+        if url is None or self.image_http is None:
+            logger.error("Cannot create recognition review for message %s: image unavailable", message.id)
+            return
+        try:
+            image, content_type = await download_image(self.image_http, url)
+            extension = {
+                "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"
+            }.get(content_type)
+            if extension is None:
+                raise ValueError(f"Unsupported review image type: {content_type}")
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+            logger.exception("Could not download recognition review image for message %s", message.id)
+            return
+        embed = discord.Embed(
+            title=f"Is this {display_pokemon_name(name)}?",
+            description=f"[Jump to spawn]({message.jump_url})",
         )
-        allowed_mentions = discord.AllowedMentions(
-            users=[discord.Object(id=RECOGNITION_ALERT_USER_ID)],
-            roles=False,
-            everyone=False,
-            replied_user=False,
-        )
+        embed.add_field(name="Guess", value=name, inline=True)
+        embed.add_field(name="Confidence", value=f"{confidence:.2f}%", inline=True)
+        embed.set_footer(text=str(message.id))
+        filename = f"spawn{extension}"
+        embed.set_image(url=f"attachment://{filename}")
         for channel_id in channel_ids:
             channel = self.get_channel(channel_id)
             if channel is None:
@@ -10653,8 +10818,10 @@ class NamingBot(commands.Bot):
                 continue
             try:
                 await channel.send(
-                    content,
-                    allowed_mentions=allowed_mentions,
+                    embed=embed,
+                    file=discord.File(BytesIO(image), filename=filename),
+                    view=RecognitionReviewView(self),
+                    allowed_mentions=discord.AllowedMentions.none(),
                 )
             except discord.HTTPException:
                 logger.exception(
@@ -10684,7 +10851,7 @@ class NamingBot(commands.Bot):
             save_low_accuracy_channels(self.low_accuracy_path, self.low_accuracy_channels)
             await message.reply(
                 f"Low accuracy recorder on. Spawns scoring under {LOW_ACCURACY_THRESHOLD}% "
-                f"will be linked in {target.mention}.",
+                f"will also be reviewed in {target.mention}.",
                 mention_author=False,
             )
             return
@@ -12526,7 +12693,7 @@ class NamingBot(commands.Bot):
             await self.save_flagged_pokemon_spawn_image(
                 url, name, message.id, force=confidence < LOW_ACCURACY_THRESHOLD
             )
-        if confidence < LOW_ACCURACY_THRESHOLD:
+        if confidence < LOW_ACCURACY_THRESHOLD and not test_mode and not shiny_test_mode:
             await self.report_low_accuracy(message, name, confidence)
         if not test_mode:
             self.pokemon_named_count += 1

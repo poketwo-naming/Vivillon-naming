@@ -1219,6 +1219,8 @@ class ImageCorrectionTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.env.stop)
         self.config = ConfigTests().load_config()
         self.bot = NamingBot(self.config)
+        self.bot.training_data_dir = Path(self.directory.name) / "training_data"
+        self.bot.training_data_dir.mkdir()
         self.bot.application_owner_ids = {123}
         self.bot._connection.user = Mock(id=555)
         self.bot.image_http = Mock(close=AsyncMock())
@@ -1345,6 +1347,73 @@ class ImageCorrectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("couldn't save", self.message.reply.await_args.args[0])
         self.assertFalse(self.corrections.exists())
 
+    def review_interaction(self):
+        embed = discord.Embed(title="Is this Pikachu?")
+        embed.add_field(name="Guess", value="Pikachu")
+        embed.add_field(name="Confidence", value="25.00")
+        embed.set_footer(text="12345")
+        review = Mock()
+        review.id = 42
+        review.author.id = 555
+        review.embeds = [embed]
+        review.attachments = [Mock(filename="spawn.png", read=AsyncMock(return_value=b"spawn image"))]
+        review.edit = AsyncMock()
+        interaction = Mock()
+        interaction.user.id = 123
+        interaction.message = review
+        interaction.response.defer = AsyncMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.response.send_modal = AsyncMock()
+        interaction.followup.send = AsyncMock()
+        return interaction
+
+    async def test_review_yes_saves_guess_and_teaches_exact_image(self) -> None:
+        interaction = self.review_interaction()
+        (self.bot.training_data_dir / "Pikachu").mkdir()
+        view = bot_module.RecognitionReviewView(self.bot)
+        self.assertTrue(view.is_persistent())
+        self.assertTrue(await view.interaction_check(interaction))
+        await view.yes.callback(interaction)
+        saved = self.bot.training_data_dir / "Pikachu" / "review-12345.png"
+        self.assertEqual(saved.read_bytes(), b"spawn image")
+        self.assertEqual(self.bot.image_matcher.match(b"spawn image"), ("Pikachu", 0))
+        interaction.message.edit.assert_awaited_once_with(view=None)
+        restarted = NamingBot(self.config)
+        try:
+            self.assertEqual(restarted.image_matcher.match(b"spawn image"), ("Pikachu", 0))
+        finally:
+            await restarted.close()
+        await view.yes.callback(interaction)
+        self.assertIn("already been reviewed", interaction.followup.send.await_args.args[0])
+
+    async def test_review_no_accepts_correct_name_and_rejects_invalid_name(self) -> None:
+        interaction = self.review_interaction()
+        view = bot_module.RecognitionReviewView(self.bot)
+        await view.no.callback(interaction)
+        modal = interaction.response.send_modal.await_args.args[0]
+        self.assertIsInstance(modal, bot_module.RecognitionReviewModal)
+        await self.bot.save_recognition_review(interaction, interaction.message, "../not a pokemon")
+        self.assertIn("don't recognize", interaction.followup.send.await_args.args[0])
+        self.assertFalse(self.corrections.exists())
+        modal.pokemon._value = "Toedscool"
+        await modal.on_submit(interaction)
+        saved = self.bot.training_data_dir / "Toedscool" / "review-12345.png"
+        self.assertEqual(saved.read_bytes(), b"spawn image")
+        self.assertEqual(self.bot.image_matcher.match(b"spawn image"), ("Toedscool", 0))
+
+    async def test_review_is_owner_only_and_surfaces_write_failure(self) -> None:
+        interaction = self.review_interaction()
+        view = bot_module.RecognitionReviewView(self.bot)
+        interaction.user.id = 456
+        self.assertFalse(await view.interaction_check(interaction))
+        self.assertFalse(self.corrections.exists())
+        interaction.user.id = 123
+        with patch("bot.append_image_correction", side_effect=OSError("disk full")):
+            await view.yes.callback(interaction)
+        self.assertIn("couldn't save", interaction.followup.send.await_args.args[0])
+        self.assertIsNone(self.bot.image_matcher.match(b"spawn image"))
+        interaction.message.edit.assert_not_awaited()
+
 
 class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
@@ -1468,19 +1537,13 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.bot.failed_recognition_count, 0)
         get_channel.assert_called_once_with(bot_module.RECOGNITION_ALERT_CHANNEL_ID)
         alert_channel.send.assert_awaited_once()
-        alert = alert_channel.send.await_args.args[0]
-        self.assertIn(f"<@{bot_module.RECOGNITION_ALERT_USER_ID}>", alert)
-        self.assertIn("Pikachu", alert)
-        self.assertIn("49.99%", alert)
-        self.assertIn("below 50%", alert)
-        self.assertIn(message.jump_url, alert)
-        allowed_mentions = awaited_kwargs(alert_channel.send)["allowed_mentions"]
-        self.assertEqual(
-            [user.id for user in allowed_mentions.users],
-            [bot_module.RECOGNITION_ALERT_USER_ID],
-        )
-        self.assertFalse(allowed_mentions.roles)
-        self.assertFalse(allowed_mentions.everyone)
+        alert = awaited_kwargs(alert_channel.send)
+        self.assertEqual(alert["embed"].title, "Is this Pikachu?")
+        self.assertEqual(alert["embed"].fields[1].value, "49.99%")
+        self.assertIn(message.jump_url, alert["embed"].description)
+        self.assertEqual(alert["file"].fp.getvalue(), b"spawn image")
+        self.assertIsInstance(alert["view"], bot_module.RecognitionReviewView)
+        self.assertFalse(alert["allowed_mentions"].users)
 
     async def test_low_confidence_image_is_saved_if_confidence_log_fails(self) -> None:
         self.bot.image_http = Mock(close=AsyncMock())
@@ -1579,7 +1642,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
 
         message.reply.assert_awaited_once()
         self.assertIn("Pikachu: 25.00%", message.reply.await_args.args[0])
-        alert.assert_awaited_once_with(message, "Pikachu", 25.0)
+        alert.assert_not_awaited()
         self.assertEqual(self.bot.pokemon_named_count, 0)
         self.assertEqual(self.bot.failed_recognition_count, 0)
 
@@ -1610,8 +1673,9 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
             ), patch(
                 "bot.download_image",
                 new=AsyncMock(return_value=(b"spawn image", "image/png")),
-            ):
+            ), patch.object(self.bot, "report_low_accuracy", new=AsyncMock()) as alert:
                 await self.bot.handle_spawn(message)
+                alert.assert_not_awaited()
 
             self.assertEqual(
                 self.bot.pokemon_confidence_path.read_text(encoding="utf-8").splitlines(),

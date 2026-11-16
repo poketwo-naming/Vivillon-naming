@@ -1,6 +1,6 @@
 """Recognise spawns from reference pictures, ignoring the background.
 
-`build_image_bank.py` turns the pictures in pokemon_images/ into a compact
+`build_image_bank.py` turns the pictures in pokemon training/training_data/ into a compact
 feature file (image_bank.npz). The bot only loads that file.
 """
 
