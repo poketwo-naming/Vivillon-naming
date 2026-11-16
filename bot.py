@@ -12858,7 +12858,7 @@ class NamingBot(commands.Bot):
             await self.save_flagged_pokemon_spawn_image(
                 url, name, message.id, confidence=confidence
             )
-        if confidence < LOW_ACCURACY_THRESHOLD and not test_mode and not shiny_test_mode:
+        if confidence < LOW_ACCURACY_THRESHOLD and not shiny_test_mode:
             await self.report_low_accuracy(message, name, confidence)
         if not test_mode:
             self.pokemon_named_count += 1

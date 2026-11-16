@@ -1487,6 +1487,56 @@ class ImageCorrectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.bot.image_matcher.match(b"spawn image"))
         interaction.message.edit.assert_not_awaited()
 
+    async def test_low_confidence_test_review_buttons_save_and_teach(self) -> None:
+        self.bot.premium_servers = {str(SERVER_ID): "gold"}
+        self.bot.pokemon_confidence_path = Path(self.directory.name) / "confidence.csv"
+        alert_channel = Mock(spec=discord.TextChannel)
+        alert_channel.send = AsyncMock()
+        self.bot.get_channel = Mock(return_value=alert_channel)
+        for index, corrected_name in enumerate(("Pikachu", "Toedscool")):
+            with self.subTest(corrected_name=corrected_name):
+                image = f"test image {index}".encode()
+                message = Mock()
+                message.id = 9000 + index
+                message.guild.id = SERVER_ID
+                message.channel.id = 9013
+                message.jump_url = f"https://discord.com/channels/1/9013/{message.id}"
+                message.attachments = [
+                    Mock(content_type="image/png", url="https://example.test/spawn.png")
+                ]
+                message.embeds = []
+                message.reply = AsyncMock()
+                with (
+                    patch("bot.recognize_pokemon", new=AsyncMock(return_value=("Pikachu", 25.0))),
+                    patch("bot.download_image", new=AsyncMock(return_value=(image, "image/png"))),
+                    patch.object(self.bot, "post_test_starboard", new=AsyncMock()),
+                ):
+                    await self.bot.handle_spawn(message, test_mode=True)
+                sent = alert_channel.send.await_args.kwargs
+                self.assertEqual(sent["embed"].title, "Is this Pikachu?")
+                self.assertEqual(sent["file"].fp.getvalue(), image)
+                self.assertIsInstance(sent["view"], bot_module.RecognitionReviewView)
+                interaction = self.review_interaction()
+                interaction.message.id = 42 + index
+                interaction.message.embeds = [sent["embed"]]
+                interaction.message.attachments = [
+                    Mock(filename="spawn.png", read=AsyncMock(return_value=image))
+                ]
+                if index == 0:
+                    await sent["view"].yes.callback(interaction)
+                else:
+                    await sent["view"].no.callback(interaction)
+                    modal = interaction.response.send_modal.await_args.args[0]
+                    modal.pokemon._value = corrected_name
+                    await modal.on_submit(interaction)
+                self.assertEqual(
+                    (self.bot.training_data_dir / corrected_name / f"review-{message.id}.png").read_bytes(),
+                    image,
+                )
+                self.assertEqual(self.bot.image_matcher.match(image), (corrected_name, 0))
+        self.assertEqual(alert_channel.send.await_count, 2)
+        self.assertFalse(self.bot.pokemon_confidence_path.exists())
+
 
 class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
@@ -1706,7 +1756,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
             f"Zygarde Core: {confidence:.2f}%", message.reply.await_args.args[0]
         )
 
-    async def test_low_confidence_test_mode_posts_normal_preview(self) -> None:
+    async def test_low_confidence_test_mode_posts_preview_and_review(self) -> None:
         self.bot.image_http = Mock(close=AsyncMock())
         message = Mock()
         message.id = 9012
@@ -1727,9 +1777,45 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
 
         message.reply.assert_awaited_once()
         self.assertIn("Pikachu: 25.00%", message.reply.await_args.args[0])
-        alert.assert_not_awaited()
+        alert.assert_awaited_once_with(message, "Pikachu", 25.0)
         self.assertEqual(self.bot.pokemon_named_count, 0)
         self.assertEqual(self.bot.failed_recognition_count, 0)
+
+    async def test_test_mode_at_50_percent_does_not_send_review(self) -> None:
+        self.bot.image_http = Mock(close=AsyncMock())
+        message = Mock()
+        message.id = 9014
+        message.guild.id = SERVER_ID
+        message.attachments = [
+            Mock(content_type="image/png", url="https://example.test/spawn.png")
+        ]
+        message.embeds = []
+        message.reply = AsyncMock()
+        with (
+            patch("bot.recognize_pokemon", new=AsyncMock(return_value=("Pikachu", 50.0))),
+            patch.object(self.bot, "report_low_accuracy", new=AsyncMock()) as alert,
+            patch.object(self.bot, "post_test_starboard", new=AsyncMock()),
+        ):
+            await self.bot.handle_spawn(message, test_mode=True)
+        alert.assert_not_awaited()
+
+    async def test_shiny_test_mode_does_not_send_review(self) -> None:
+        self.bot.image_http = Mock(close=AsyncMock())
+        message = Mock()
+        message.id = 9015
+        message.guild.id = SERVER_ID
+        message.attachments = [
+            Mock(content_type="image/png", url="https://example.test/spawn.png")
+        ]
+        message.embeds = []
+        message.reply = AsyncMock()
+        with (
+            patch("bot.recognize_pokemon", new=AsyncMock(return_value=("Pikachu", 25.0))),
+            patch.object(self.bot, "report_low_accuracy", new=AsyncMock()) as alert,
+            patch.object(self.bot, "post_test_starboard", new=AsyncMock()),
+        ):
+            await self.bot.handle_spawn(message, test_mode=True, shiny_test_mode=True)
+        alert.assert_not_awaited()
 
     async def test_guess_at_50_percent_uses_normal_spawn_reply(self) -> None:
         self.bot.image_http = Mock(close=AsyncMock())

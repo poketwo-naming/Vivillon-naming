@@ -114,6 +114,9 @@ The bot also handles spawns whose image or text Pokétwo adds by editing the mes
 
 To test an image manually, post it with `v!test` as the message caption. A
 Missingno match immediately posts a staff warning.
+If the test guess is below 50%, the same Yes/No image review used for real
+spawns is sent to the recognition review channel. Confirming or correcting it
+saves the image to the training folder and teaches its exact bytes immediately.
 Other test matches never send a catch command. A listed Pokémon recognized by
 `v!test` also posts a clearly labeled test preview to the configured Normal
 Starboard; its level and IV are shown as unknown.
