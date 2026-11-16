@@ -433,7 +433,7 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
                 matcher=matcher,
             )
 
-        self.assertEqual(result, ("Palafin", 97.0))
+        self.assertEqual(result, ("Palafin", 49.99))
         request_prediction.assert_awaited_once()
 
     async def test_unverified_vision_vivillon_prediction_is_named_at_low_confidence(
@@ -481,7 +481,7 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
                 self.fail("Expected a low-confidence fallback prediction")
             self.assertLess(prediction[1], 50)
 
-    async def test_local_matcher_agreement_raises_low_confidence_prediction_to_alert_cutoff(
+    async def test_local_matcher_agreement_stays_below_alert_cutoff(
         self,
     ) -> None:
         import bot
@@ -509,7 +509,7 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
                 matcher=matcher,
             )
 
-        self.assertEqual(result, ("Wiglett", 85.0))
+        self.assertEqual(result, ("Wiglett", 49.99))
 
     async def test_weak_local_agreement_does_not_raise_low_confidence_prediction(
         self,
@@ -563,7 +563,7 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
                 matcher=Mock(entries=["Pikachu"]),
             )
 
-        self.assertEqual(result, ("Pikachu", 100.0))
+        self.assertEqual(result, ("Pikachu", 49.99))
         self.assertEqual(
             log_info.call_args.args[0],
             "Matched %s from reference images (%d votes) "
@@ -575,8 +575,49 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
             r"\[download \d+\.\d{2}s, match \d+\.\d{2}s\]$",
         )
 
+    async def test_only_manually_confirmed_exact_image_has_full_confidence(self) -> None:
+        image = b"spawn image"
+        digest = hashlib.sha256(image).hexdigest()
+        matcher = image_match.ImageMatcher(Path(self.id()) / "missing.npz")
+        matcher.exact_references[digest] = "Snover"
+        with patch("bot.download_image", new=AsyncMock(return_value=(image, "image/png"))):
+            result = await bot_module.recognize_pokemon(
+                "https://example.test/spawn.png", client=None, http=Mock(),
+                model="test-model", matcher=matcher,
+            )
+            self.assertEqual(result, ("Snover", 49.99))
+            matcher.corrected_references[digest] = "Snom"
+            result = await bot_module.recognize_pokemon(
+                "https://example.test/spawn.png", client=None, http=Mock(),
+                model="test-model", matcher=matcher,
+            )
+        self.assertEqual(result, ("Snom", 100.0))
+
+    async def test_direct_vision_guess_is_capped_below_review_threshold(self) -> None:
+        with patch("bot.request_prediction", new=AsyncMock(return_value=("Snover", 99.0))):
+            result = await bot_module.recognize_pokemon(
+                "https://example.test/spawn.png", client=Mock(), http=Mock(),
+                model="test-model",
+            )
+        self.assertEqual(result, ("Snover", 49.99))
+
+    async def test_fallback_corroboration_cannot_bypass_review(self) -> None:
+        name = "Yellow-Plumage Squawkabilly"
+        matcher = Mock(entries=[name])
+        matcher.best_guess.return_value = (name, 20)
+        with (
+            patch("bot.download_image", new=AsyncMock(return_value=(b"image", "image/png"))),
+            patch("bot.asyncio.to_thread", new=AsyncMock(return_value=None)),
+            patch("bot.squawkabilly_form_by_color", return_value=name),
+        ):
+            result = await bot_module.recognize_pokemon(
+                "https://example.test/spawn.png", client=None, http=Mock(),
+                model="test-model", matcher=matcher,
+            )
+        self.assertEqual(result, (name, 49.99))
+
     @unittest.skipIf(image_match.cv2 is None, "OpenCV is not installed")
-    async def test_user_reference_images_recognized_at_full_confidence(self) -> None:
+    async def test_user_reference_images_recognized_below_review_threshold(self) -> None:
         matcher = image_match.ImageMatcher(Path(__file__).with_name("image_bank.npz"))
         root = Path(__file__).with_name("pokemon_images")
         for folder, display in (
@@ -605,10 +646,10 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
                     )
                 self.assertEqual(name, folder)
                 self.assertEqual(bot_module.display_pokemon_name(name), display)
-                self.assertEqual(confidence, 100.0)
+                self.assertEqual(confidence, 49.99)
 
     @unittest.skipIf(image_match.cv2 is None, "OpenCV is not installed")
-    async def test_recent_references_are_named_at_full_confidence(self) -> None:
+    async def test_recent_references_are_named_below_review_threshold(self) -> None:
         matcher = image_match.ImageMatcher(Path(__file__).with_name("image_bank.npz"))
         root = Path(__file__).with_name("pokemon_images")
         for folder, filename, expected in (
@@ -639,7 +680,7 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
                         model="test-model",
                         matcher=matcher,
                     )
-                self.assertEqual(result, (expected, 100.0))
+                self.assertEqual(result, (expected, 49.99))
 
     def test_east_sea_gastrodon_keeps_its_form_in_the_display(self) -> None:
         self.assertEqual(
@@ -649,7 +690,7 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(image_match.species_display_name("East Sea Gastrodon"), "Gastrodon")
 
     @unittest.skipIf(image_match.cv2 is None, "OpenCV is not installed")
-    async def test_user_q_unown_reference_is_recognized_at_full_confidence(self) -> None:
+    async def test_user_q_unown_reference_is_recognized_below_review_threshold(self) -> None:
         matcher = image_match.ImageMatcher(Path(__file__).with_name("image_bank.npz"))
         image = (
             Path(__file__).with_name("pokemon_images")
@@ -678,7 +719,7 @@ class RecognitionValidationTests(unittest.IsolatedAsyncioTestCase):
                         matcher=matcher,
                     )
                 self.assertEqual(name, "Q Unown")
-                self.assertEqual(confidence, 100.0)
+                self.assertEqual(confidence, 49.99)
 
     async def test_no_reference_match_uses_low_confidence_local_guess(self) -> None:
         import bot
@@ -1578,6 +1619,46 @@ class ImageCorrectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(alert_channel.send.await_count, 2)
         self.assertFalse(self.bot.pokemon_confidence_path.exists())
 
+    async def test_wrong_exact_test_guess_can_be_corrected_in_review(self) -> None:
+        self.bot.premium_servers = {str(SERVER_ID): "gold"}
+        image = b"spawn image"
+        self.bot.image_matcher.exact_references[hashlib.sha256(image).hexdigest()] = "Snover"
+        alert_channel = Mock(spec=discord.TextChannel)
+        alert_channel.send = AsyncMock()
+        self.bot.get_channel = Mock(return_value=alert_channel)
+        message = Mock()
+        message.id = 9002
+        message.guild.id = SERVER_ID
+        message.jump_url = "https://discord.com/channels/1/9013/9002"
+        message.attachments = [
+            Mock(content_type="image/png", url="https://example.test/spawn.png")
+        ]
+        message.embeds = []
+        message.reply = AsyncMock()
+        with (
+            patch("bot.download_image", new=AsyncMock(return_value=(image, "image/png"))),
+            patch.object(self.bot, "post_test_starboard", new=AsyncMock()),
+        ):
+            await self.bot.handle_spawn(message, test_mode=True)
+            sent = alert_channel.send.await_args.kwargs
+            self.assertEqual(sent["embed"].fields[0].value, "Snover")
+            self.assertEqual(sent["embed"].fields[1].value, "49.99%")
+            interaction = self.review_interaction()
+            interaction.message.embeds = [sent["embed"]]
+            await sent["view"].no.callback(interaction)
+            modal = interaction.response.send_modal.await_args.args[0]
+            modal.pokemon._value = "Snom"
+            await modal.on_submit(interaction)
+            self.assertEqual(
+                (self.bot.training_data_dir / "Snom" / "review-9002.png").read_bytes(),
+                image,
+            )
+            result = await bot_module.recognize_pokemon(
+                "https://example.test/spawn.png", client=None, http=self.bot.image_http,
+                model="test-model", matcher=self.bot.image_matcher,
+            )
+        self.assertEqual(result, ("Snom", 100.0))
+
 
 class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
@@ -1840,7 +1921,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
             await self.bot.handle_spawn(message, test_mode=True)
         alert.assert_not_awaited()
 
-    async def test_shiny_test_mode_does_not_send_review(self) -> None:
+    async def test_shiny_test_mode_sends_low_confidence_review(self) -> None:
         self.bot.image_http = Mock(close=AsyncMock())
         message = Mock()
         message.id = 9015
@@ -1856,7 +1937,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
             patch.object(self.bot, "post_test_starboard", new=AsyncMock()),
         ):
             await self.bot.handle_spawn(message, test_mode=True, shiny_test_mode=True)
-        alert.assert_not_awaited()
+        alert.assert_awaited_once_with(message, "Pikachu", 25.0)
 
     async def test_guess_at_50_percent_uses_normal_spawn_reply(self) -> None:
         self.bot.image_http = Mock(close=AsyncMock())

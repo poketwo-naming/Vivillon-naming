@@ -114,7 +114,7 @@ The bot also handles spawns whose image or text Pokétwo adds by editing the mes
 
 To test an image manually, post it with `v!test` as the message caption. A
 Missingno match immediately posts a staff warning.
-If the test guess is below 50%, the same Yes/No image review used for real
+If a `v!test` or `v!test shiny` guess is below 50%, the same Yes/No image review used for real
 spawns is sent to the recognition review channel. Confirming or correcting it
 saves the image to the training folder and teaches its exact bytes immediately.
 Other test matches never send a catch command. A listed Pokémon recognized by
@@ -148,6 +148,11 @@ collection, and type-ping members are mentioned when they match; registrations
 do not limit which spawns are named. The confidence is an estimate, not a
 calibrated probability. Real-spawn guesses at or below 50% are appended to
 `pokemon_confidence.csv` in the project root, creating it with a header if needed.
+Every automatic guess that has not been confirmed for those exact image bytes
+is capped at 49.99%, including exact matches from the training bank and vision
+predictions. This means correct automatic guesses also receive review requests.
+Yes/No reviews and `v!correct` confirm the exact image bytes; future matches
+for those bytes are reported at 100%. A mistaken confirmation can still be wrong.
 Real spawns below 50% and unidentified spawns are saved to
 `pokemon_confidence_review/` for manual review unless the image is already
 known exactly.
@@ -191,10 +196,7 @@ similar species and forms. It distinguishes Finizen from Palafin by checking
 for Palafin's red, heart-shaped chest/underside mark when visible. Image
 recognition can still make mistakes, so check guesses before relying on them.
 Guesses below 50% are still named, and an image review with the confidence and
-source link is sent to the recognition alert channel without a ping. An
-agreeing local match with sufficient feature votes raises a low-confidence
-vision guess to at least 85%. An unverified Vivillon form prediction is
-still named at low confidence. It then
+source link is sent to the recognition alert channel without a ping. The bot then
 posts the matching Pokétwo catch command as inline code for easier copying,
 preceded by a bold “Copy Here >” label, when Assisted mode is on. Maushold's
 Family-of-Three and Family-of-Four appearances are displayed simply as

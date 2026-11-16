@@ -1446,7 +1446,13 @@ async def recognize_pokemon(
                     download_seconds,
                     match_seconds,
                 )
-            return found[0], 100.0
+            confirmed = (
+                found[1] == 0
+                and matcher.corrected_references.get(
+                    hashlib.sha256(downloaded[0]).hexdigest()
+                ) == found[0]
+            )
+            return found[0], 100.0 if confirmed else LOW_ACCURACY_THRESHOLD - 0.01
     logger.info(
         "No reference match [download %.2fs, match %.2fs]",
         download_seconds,
@@ -1460,7 +1466,7 @@ async def recognize_pokemon(
             else None
         )
         if fallback is not None:
-            return fallback
+            return fallback[0], min(fallback[1], LOW_ACCURACY_THRESHOLD - 0.01)
         raise NoMatchError("No reference image matched and OpenAI is not configured")
 
     prediction: tuple[str, float] | None = None
@@ -1478,11 +1484,11 @@ async def recognize_pokemon(
             downloaded = await download_image(http, url)
             fallback = local_fallback_prediction(matcher, downloaded[0])
             if fallback is not None:
-                return fallback
+                return fallback[0], min(fallback[1], LOW_ACCURACY_THRESHOLD - 0.01)
             raise
         else:
             if prediction[0] not in VIVILLON_FORM_SET or cv2 is None:
-                return prediction
+                return prediction[0], min(prediction[1], LOW_ACCURACY_THRESHOLD - 0.01)
             downloaded = await download_image(http, url)
 
     image_bytes, content_type = downloaded
@@ -1499,7 +1505,7 @@ async def recognize_pokemon(
             logger.exception("Vision prediction failed; trying a local best guess")
             fallback = local_fallback_prediction(matcher, image_bytes)
             if fallback is not None:
-                return fallback
+                return fallback[0], min(fallback[1], LOW_ACCURACY_THRESHOLD - 0.01)
             raise
     if prediction[0] in VIVILLON_FORM_SET and cv2 is not None:
         matched_form = await asyncio.to_thread(vivillon_form_by_pattern, image_bytes)
@@ -1526,7 +1532,7 @@ async def recognize_pokemon(
                 local_guess[1],
             )
             prediction = prediction[0], CORROBORATED_CONFIDENCE_FLOOR
-    return prediction
+    return prediction[0], min(prediction[1], LOW_ACCURACY_THRESHOLD - 0.01)
 
 
 async def request_prediction(
@@ -12879,7 +12885,7 @@ class NamingBot(commands.Bot):
             await self.save_flagged_pokemon_spawn_image(
                 url, name, message.id, confidence=confidence
             )
-        if confidence < LOW_ACCURACY_THRESHOLD and not shiny_test_mode:
+        if confidence < LOW_ACCURACY_THRESHOLD:
             await self.report_low_accuracy(message, name, confidence)
         if not test_mode:
             self.pokemon_named_count += 1
