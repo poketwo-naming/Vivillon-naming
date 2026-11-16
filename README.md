@@ -145,8 +145,16 @@ collection, and type-ping members are mentioned when they match; registrations
 do not limit which spawns are named. The confidence is an estimate, not a
 calibrated probability. Real-spawn guesses at or below 50% are appended to
 `pokemon_confidence.csv` in the project root, creating it with a header if needed.
-Real spawns matching a name in that CSV are also saved to
-`pokemon_confidence_review/` for manual review.
+Real spawns below 50%, spawns that cannot be identified, and spawns matching a
+name in that CSV are saved to `pokemon_confidence_review/` for manual review.
+The filename includes the message ID and guessed name (or `unknown`); check the
+image and move it into the correct `pokemon_images/<Pokémon name>/` folder.
+Moving an image does not automatically update recognition: rebuild and deploy
+the image bank as described below, then restart the bot. Images are stored on
+the machine running the bot, not automatically in GitHub or your Codespace.
+For containers, mount persistent storage and set
+`POKEMON_CONFIDENCE_REVIEW_DIR` to a directory on that mount, such as
+`/data/pokemon_confidence_review`.
 The bot owner can reply to a recognition alert with `v!correct <correct name>`
 (for example, `v!correct Zygarde Core`). The bot retrieves the original spawn
 image, records its SHA-256 hash, corrected name, previous guess and confidence

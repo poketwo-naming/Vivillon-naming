@@ -4,6 +4,7 @@ __pycache__/
 *.py[cod]
 .env
 .bank_cache/
+pokemon_confidence_review/
 pokemon_images/archive/
 test/
 music/*.mp4

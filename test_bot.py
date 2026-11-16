@@ -1482,6 +1482,36 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(allowed_mentions.roles)
         self.assertFalse(allowed_mentions.everyone)
 
+    async def test_low_confidence_image_is_saved_if_confidence_log_fails(self) -> None:
+        self.bot.image_http = Mock(close=AsyncMock())
+        self.bot.server_settings[str(SERVER_ID)] = {"enabled": True, "assisted": False}
+        message = Mock()
+        message.id = 9009
+        message.guild.id = SERVER_ID
+        message.channel.id = 9010
+        message.attachments = [
+            Mock(content_type="image/png", url="https://example.test/spawn.png")
+        ]
+        message.embeds = []
+        message.reply = AsyncMock()
+
+        with tempfile.TemporaryDirectory() as directory:
+            self.bot.pokemon_confidence_path = Path(directory) / "missing" / "confidence.csv"
+            self.bot.pokemon_confidence_review_dir = Path(directory) / "review"
+            with (
+                patch("bot.recognize_pokemon", new=AsyncMock(return_value=("Bellsprout", 49.99))),
+                patch("bot.download_image", new=AsyncMock(return_value=(b"spawn image", "image/png"))),
+                patch.object(self.bot, "report_low_accuracy", new=AsyncMock()) as alert,
+            ):
+                await self.bot.handle_spawn(message)
+
+            self.assertEqual(
+                (self.bot.pokemon_confidence_review_dir / "9009_bellsprout.png").read_bytes(),
+                b"spawn image",
+            )
+            message.reply.assert_awaited_once()
+            alert.assert_awaited_once_with(message, "Bellsprout", 49.99)
+
     @unittest.skipIf(image_match.cv2 is None, "OpenCV is not installed")
     async def test_weak_zygarde_core_spawn_is_named_and_alerted(self) -> None:
         self.bot.image_http = Mock(close=AsyncMock())
@@ -2337,6 +2367,9 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         message.reply = AsyncMock()
         alert_channel = Mock(spec=discord.TextChannel)
         alert_channel.send = AsyncMock()
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.bot.pokemon_confidence_review_dir = Path(directory.name) / "review"
 
         with (
             patch.object(
@@ -2350,9 +2383,17 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
                     side_effect=bot_module.NoMatchError("No reference match")
                 ),
             ) as recognize,
+            patch(
+                "bot.download_image",
+                new=AsyncMock(return_value=(b"unknown spawn", "image/png")),
+            ),
         ):
             await self.bot.handle_spawn(message)
 
+        self.assertEqual(
+            (self.bot.pokemon_confidence_review_dir / "710_unknown.png").read_bytes(),
+            b"unknown spawn",
+        )
         recognize.assert_awaited_once()
         message.reply.assert_not_awaited()
         get_channel.assert_called_once_with(
@@ -2372,6 +2413,36 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(allowed_mentions.roles)
         self.assertFalse(allowed_mentions.everyone)
         self.assertEqual(self.bot.failed_recognition_count, 1)
+
+    async def test_recognition_failure_saves_image_but_test_mode_does_not(self) -> None:
+        self.bot.image_http = Mock(close=AsyncMock())
+        self.bot.server_settings[str(SERVER_ID)] = {"enabled": True, "assisted": False}
+        message = Mock()
+        message.id = 711
+        message.guild.id = SERVER_ID
+        message.channel.id = 1210
+        message.attachments = [
+            Mock(content_type="image/png", url="https://example.test/spawn.png")
+        ]
+        message.embeds = []
+        message.reply = AsyncMock()
+
+        with tempfile.TemporaryDirectory() as directory:
+            self.bot.pokemon_confidence_review_dir = Path(directory) / "review"
+            with (
+                patch("bot.recognize_pokemon", new=AsyncMock(side_effect=ValueError("invalid prediction"))),
+                patch("bot.download_image", new=AsyncMock(return_value=(b"spawn", "image/png"))) as download,
+                patch.object(self.bot, "send_recognition_failure_alert", new=AsyncMock()),
+                patch("bot.asyncio.sleep", new=AsyncMock()),
+            ):
+                await self.bot.handle_spawn(message)
+                self.assertEqual(
+                    (self.bot.pokemon_confidence_review_dir / "711_unknown.png").read_bytes(),
+                    b"spawn",
+                )
+                message.id = 712
+                await self.bot.handle_spawn(message, test_mode=True)
+                download.assert_awaited_once()
 
     async def test_only_pings_matches_reserves_hunts_collections_and_types(self) -> None:
         self.bot.image_http = Mock(close=AsyncMock())

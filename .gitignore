@@ -15,6 +15,7 @@ premium_servers.json.tmp
 starboard_settings.json
 starboard_settings.json.tmp
 .bank_cache/
+pokemon_confidence_review/
 pokemon_images/archive/
 data/pokemon_corrections.csv
 boxes.json

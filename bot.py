@@ -7600,8 +7600,11 @@ class NamingBot(commands.Bot):
         self.pokemon_confidence_path = Path(__file__).with_name(
             "pokemon_confidence.csv"
         )
-        self.pokemon_confidence_review_dir = Path(__file__).with_name(
-            "pokemon_confidence_review"
+        self.pokemon_confidence_review_dir = Path(
+            os.environ.get(
+                "POKEMON_CONFIDENCE_REVIEW_DIR",
+                str(Path(__file__).with_name("pokemon_confidence_review")),
+            )
         )
         self.low_accuracy_channels = load_low_accuracy_channels(
             self.low_accuracy_path
@@ -10571,12 +10574,12 @@ class NamingBot(commands.Bot):
         await message.reply(confirmation, mention_author=False)
 
     async def save_flagged_pokemon_spawn_image(
-        self, url: str, name: str, message_id: int
+        self, url: str, name: str | None, message_id: int, *, force: bool = False
     ) -> None:
-        display_name = display_pokemon_name(name)
-        if normalize_pokemon_alias(display_name) not in load_pokemon_confidence_names(
-            self.pokemon_confidence_path
-        ):
+        display_name = display_pokemon_name(name) if name else "unknown"
+        if not force and normalize_pokemon_alias(
+            display_name
+        ) not in load_pokemon_confidence_names(self.pokemon_confidence_path):
             return
         image_http = self.image_http
         if image_http is None:
@@ -12452,11 +12455,19 @@ class NamingBot(commands.Bot):
             except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
                 self.failed_recognition_count += 1
                 logger.exception("Could not recognize spawn in message %s", message.id)
+                if not test_mode and not shiny_test_mode:
+                    await self.save_flagged_pokemon_spawn_image(
+                        url, None, message.id, force=True
+                    )
                 await self.send_recognition_failure_alert(message)
                 return
             except NoMatchError:
                 self.failed_recognition_count += 1
                 logger.info("No Pokémon match was verified for spawn %s", message.id)
+                if not test_mode and not shiny_test_mode:
+                    await self.save_flagged_pokemon_spawn_image(
+                        url, None, message.id, force=True
+                    )
                 if test_mode:
                     await message.reply(
                         "I couldn't match that test image to a reference Pokémon.",
@@ -12468,6 +12479,10 @@ class NamingBot(commands.Bot):
             except OpenAIError:
                 self.failed_recognition_count += 1
                 logger.exception("Vision request failed for message %s", message.id)
+                if not test_mode and not shiny_test_mode:
+                    await self.save_flagged_pokemon_spawn_image(
+                        url, None, message.id, force=True
+                    )
                 await self.send_recognition_failure_alert(message)
                 return
         finally:
@@ -12491,6 +12506,10 @@ class NamingBot(commands.Bot):
         if not name:
             if not test_mode:
                 self.failed_recognition_count += 1
+            if not test_mode and not shiny_test_mode:
+                await self.save_flagged_pokemon_spawn_image(
+                    url, None, message.id, force=True
+                )
             await self.send_recognition_failure_alert(message)
             return
         if (
@@ -12504,7 +12523,9 @@ class NamingBot(commands.Bot):
                 confidence,
             )
         if not test_mode and not shiny_test_mode:
-            await self.save_flagged_pokemon_spawn_image(url, name, message.id)
+            await self.save_flagged_pokemon_spawn_image(
+                url, name, message.id, force=confidence < LOW_ACCURACY_THRESHOLD
+            )
         if confidence < LOW_ACCURACY_THRESHOLD:
             await self.report_low_accuracy(message, name, confidence)
         if not test_mode:
