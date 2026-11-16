@@ -84,6 +84,11 @@ class ImageMatcherTests(unittest.TestCase):
             with patch.object(matcher, "_transparency_mask", return_value=None):
                 with patch("image_match.compute_descriptors", return_value=None):
                     with patch("image_match.foreground_mask", return_value=None):
+                        self.assertEqual(matcher.known_name(image), "Pikachu")
+                        matcher.corrected_references[hashlib.sha256(image).hexdigest()] = "Eevee"
+                        self.assertEqual(matcher.known_name(image), "Eevee")
+                        matcher.corrected_references.clear()
+                        self.assertIsNone(matcher.known_name(b"different image bytes"))
                         self.assertEqual(matcher.match(image), ("Pikachu", 0))
                         self.assertIsNone(matcher.match(b"different image bytes"))
 
@@ -181,6 +186,7 @@ class ImageMatcherTests(unittest.TestCase):
                 decoded_labels=labels,
             )
             matcher = ImageMatcher(bank)
+            self.assertEqual(matcher.known_name(second), "Pikachu")
             self.assertEqual(matcher.match(second), ("Pikachu", 0))
             image[0, 0, 0] ^= 1
             changed = cv2.imencode(".png", image)[1].tobytes()

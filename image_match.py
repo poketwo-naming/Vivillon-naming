@@ -818,6 +818,23 @@ class ImageMatcher:
     def entries(self) -> list[str]:
         return self.names
 
+    def known_name(self, data: bytes) -> str | None:
+        if self.corrected_references or self.exact_references:
+            digest = hashlib.sha256(data).hexdigest()
+            corrected = self.corrected_references.get(digest)
+            if corrected is not None:
+                return corrected
+            exact = self.exact_references.get(digest)
+            if exact is not None:
+                return DISPLAY_NAMES.get(exact, exact)
+        if self.decoded_references and cv2 is not None:
+            image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+            if image is not None:
+                decoded = self.decoded_references.get(decoded_image_hash(image))
+                if decoded is not None:
+                    return DISPLAY_NAMES.get(decoded, decoded)
+        return None
+
     def match(self, data: bytes) -> tuple[str, int] | None:
         """Return (pokemon name, votes) when one Pokémon clearly wins.
 

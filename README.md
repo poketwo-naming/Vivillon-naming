@@ -145,8 +145,9 @@ collection, and type-ping members are mentioned when they match; registrations
 do not limit which spawns are named. The confidence is an estimate, not a
 calibrated probability. Real-spawn guesses at or below 50% are appended to
 `pokemon_confidence.csv` in the project root, creating it with a header if needed.
-Real spawns below 50%, spawns that cannot be identified, and spawns matching a
-name in that CSV are saved to `pokemon_confidence_review/` for manual review.
+Real spawns below 50% and unidentified spawns are saved to
+`pokemon_confidence_review/` for manual review unless the image is already
+known exactly.
 The filename includes the message ID and guessed name (or `unknown`).
 For real guesses below 50%, the bot also sends the spawn image and a Yes/No
 question to channel `1531476097970212915`. The bot owner can confirm the guess
@@ -162,7 +163,11 @@ or your Codespace. Set `POKEMON_TRAINING_DIR` to use another directory; it must
 already exist. For containers, mount a persistent volume for that directory.
 For containers, mount persistent storage and set
 `POKEMON_CONFIDENCE_REVIEW_DIR` to a directory on that mount, such as
-`/data/pokemon_confidence_review`.
+`/data/pokemon_confidence_review`. Review files from previous days are deleted
+at startup and local midnight; `POKEMON_REVIEW_RETENTION_DAYS` controls how
+many calendar days to keep (default 1). Known review images are also removed
+after a correction and checked at midnight. This cleanup does not affect the
+training folder.
 The bot owner can also reply to a recognition-failure alert or an older
 low-accuracy text alert with `v!correct <correct name>`
 (for example, `v!correct Zygarde Core`). The bot retrieves the original spawn

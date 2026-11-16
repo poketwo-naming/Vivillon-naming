@@ -15,7 +15,7 @@ import time
 from collections import OrderedDict, deque
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Final, Literal, TypeGuard, TypedDict, cast
@@ -7668,6 +7668,14 @@ class NamingBot(commands.Bot):
                 str(Path(__file__).with_name("pokemon_confidence_review")),
             )
         )
+        try:
+            self.review_image_retention_days = max(
+                1, int(os.environ.get("POKEMON_REVIEW_RETENTION_DAYS", "1"))
+            )
+        except ValueError:
+            logger.warning("Invalid POKEMON_REVIEW_RETENTION_DAYS; using 1 day")
+            self.review_image_retention_days = 1
+        self.image_retention_task: asyncio.Task[None] | None = None
         self.low_accuracy_channels = load_low_accuracy_channels(
             self.low_accuracy_path
         )
@@ -8688,9 +8696,16 @@ class NamingBot(commands.Bot):
             connector=aiohttp.TCPConnector(limit=0),
             headers={"User-Agent": "Vivillon-naming/1.0"},
         )
+        self.image_retention_task = asyncio.create_task(self.run_image_retention())
 
     async def close(self) -> None:
         self.pokeball_drops.close()
+        if self.image_retention_task is not None:
+            self.image_retention_task.cancel()
+            try:
+                await self.image_retention_task
+            except asyncio.CancelledError:
+                pass
         for task in self.time_tasks.values():
             task.cancel()
         self.time_tasks.clear()
@@ -9505,11 +9520,14 @@ class NamingBot(commands.Bot):
             )
             return
         self.image_matcher.corrected_references[digest] = name
-        await message.reply(
+        removed = await self.remove_review_images_for_correction(int(spawn_id), digest)
+        confirmation = (
             f"Saved **{display_pokemon_name(name)}** for this exact image. "
-            "Future identical images will use this name.",
-            mention_author=False,
+            "Future identical images will use this name."
         )
+        if removed:
+            confirmation += f" Deleted {removed} matching review image(s)."
+        await message.reply(confirmation, mention_author=False)
 
     async def handle_premium_command(self, message: discord.Message) -> None:
         match = PREMIUM_COMMAND_PATTERN.fullmatch(message.content.strip())
@@ -10637,12 +10655,11 @@ class NamingBot(commands.Bot):
         await message.reply(confirmation, mention_author=False)
 
     async def save_flagged_pokemon_spawn_image(
-        self, url: str, name: str | None, message_id: int, *, force: bool = False
+        self, url: str, name: str | None, message_id: int, *,
+        force: bool = False, confidence: float | None = None,
     ) -> None:
         display_name = display_pokemon_name(name) if name else "unknown"
-        if not force and normalize_pokemon_alias(
-            display_name
-        ) not in load_pokemon_confidence_names(self.pokemon_confidence_path):
+        if not force and (confidence is None or confidence >= LOW_ACCURACY_THRESHOLD):
             return
         image_http = self.image_http
         if image_http is None:
@@ -10650,6 +10667,9 @@ class NamingBot(commands.Bot):
             return
         try:
             image_bytes, content_type = await download_image(image_http, url)
+            if self.image_matcher.known_name(image_bytes) is not None:
+                logger.info("Skipped review image for %s: image is already known", display_name)
+                return
             extension = mimetypes.guess_extension(content_type, strict=False) or ".img"
             slug = re.sub(
                 r"[^a-z0-9]+",
@@ -10670,6 +10690,136 @@ class NamingBot(commands.Bot):
                 "Could not save flagged spawn image for message %s",
                 message_id,
             )
+
+    async def remove_review_images_for_correction(self, message_id: int, digest: str) -> int:
+        directory = self.pokemon_confidence_review_dir
+        try:
+            by_message = await asyncio.to_thread(
+                self.delete_review_images_by_message_id, directory, message_id
+            )
+            by_digest = await asyncio.to_thread(
+                self.delete_review_images_by_digest, directory, digest
+            )
+        except OSError:
+            logger.exception("Could not delete review images in %s", directory)
+            return 0
+        removed = by_message + by_digest
+        if removed:
+            logger.info("Deleted %s review image(s) for taught spawn %s", removed, message_id)
+        return removed
+
+    @staticmethod
+    def delete_review_images_by_message_id(directory: Path, message_id: int) -> int:
+        removed = 0
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    if not entry.name.startswith(f"{message_id}_"):
+                        continue
+                    try:
+                        if entry.is_file():
+                            os.unlink(entry.path)
+                            removed += 1
+                    except FileNotFoundError:
+                        continue
+                    except OSError:
+                        logger.exception("Could not delete review image %s", entry.path)
+        except FileNotFoundError:
+            return 0
+        return removed
+
+    @staticmethod
+    def delete_review_images_by_digest(directory: Path, digest: str) -> int:
+        removed = 0
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    try:
+                        if not entry.is_file():
+                            continue
+                        with open(entry.path, "rb") as handle:
+                            candidate = hashlib.sha256(handle.read()).hexdigest()
+                        if candidate == digest:
+                            os.unlink(entry.path)
+                            removed += 1
+                    except FileNotFoundError:
+                        continue
+                    except OSError:
+                        logger.exception("Could not inspect or delete review image %s", entry.path)
+        except FileNotFoundError:
+            return 0
+        return removed
+
+    async def purge_known_review_images(self) -> None:
+        try:
+            removed = await asyncio.to_thread(self.purge_known_review_images_sync)
+        except OSError:
+            logger.exception("Could not delete known review images")
+            return
+        if removed:
+            logger.info("Deleted %s review image(s) already known", removed)
+
+    def purge_known_review_images_sync(self) -> int:
+        try:
+            with os.scandir(self.pokemon_confidence_review_dir) as entries:
+                paths = [entry.path for entry in entries if entry.is_file()]
+        except FileNotFoundError:
+            return 0
+        removed = 0
+        for path in paths:
+            try:
+                with open(path, "rb") as handle:
+                    if self.image_matcher.known_name(handle.read()) is None:
+                        continue
+                os.unlink(path)
+                removed += 1
+            except FileNotFoundError:
+                continue
+            except OSError:
+                logger.exception("Could not inspect or delete review image %s", path)
+        return removed
+
+    async def run_image_retention(self) -> None:
+        await self.purge_old_review_images()
+        while True:
+            now = datetime.now()
+            next_run = (now + timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            await asyncio.sleep(max(60.0, (next_run - datetime.now()).total_seconds()))
+            await self.purge_old_review_images()
+            await self.purge_known_review_images()
+
+    async def purge_old_review_images(self) -> None:
+        start_of_today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        cutoff = (start_of_today - timedelta(days=self.review_image_retention_days - 1)).timestamp()
+        try:
+            removed = await asyncio.to_thread(
+                self.purge_review_images_before, self.pokemon_confidence_review_dir, cutoff
+            )
+        except OSError:
+            logger.exception("Could not clean up review images in %s", self.pokemon_confidence_review_dir)
+            return
+        if removed:
+            logger.info("Review image cleanup deleted %s old file(s)", removed)
+
+    @staticmethod
+    def purge_review_images_before(directory: Path, cutoff: float) -> int:
+        removed = 0
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_file() and entry.stat().st_mtime < cutoff:
+                            os.unlink(entry.path)
+                            removed += 1
+                    except FileNotFoundError:
+                        continue
+                    except OSError:
+                        logger.exception("Could not delete old review image %s", entry.path)
+        except FileNotFoundError:
+            return 0
+        return removed
 
     async def save_recognition_review(
         self, interaction: discord.Interaction, review: discord.Message, raw_name: str
@@ -10760,6 +10910,7 @@ class NamingBot(commands.Bot):
                     ephemeral=True,
                 )
                 return
+            await self.remove_review_images_for_correction(int(spawn_id), digest)
             try:
                 await review.edit(view=None)
             except discord.HTTPException:
@@ -12705,7 +12856,7 @@ class NamingBot(commands.Bot):
             )
         if not test_mode and not shiny_test_mode:
             await self.save_flagged_pokemon_spawn_image(
-                url, name, message.id, force=confidence < LOW_ACCURACY_THRESHOLD
+                url, name, message.id, confidence=confidence
             )
         if confidence < LOW_ACCURACY_THRESHOLD and not test_mode and not shiny_test_mode:
             await self.report_low_accuracy(message, name, confidence)

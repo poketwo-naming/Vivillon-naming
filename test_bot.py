@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import image_match
+import os
 import tempfile
 import time
 import unittest
@@ -1221,6 +1223,7 @@ class ImageCorrectionTests(unittest.IsolatedAsyncioTestCase):
         self.bot = NamingBot(self.config)
         self.bot.training_data_dir = Path(self.directory.name) / "training_data"
         self.bot.training_data_dir.mkdir()
+        self.bot.pokemon_confidence_review_dir = Path(self.directory.name) / "review"
         self.bot.application_owner_ids = {123}
         self.bot._connection.user = Mock(id=555)
         self.bot.image_http = Mock(close=AsyncMock())
@@ -1293,6 +1296,17 @@ class ImageCorrectionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(restarted.image_matcher.match(image), ("Zygarde Core", 0))
         finally:
             await restarted.close()
+
+    async def test_correction_removes_matching_review_images_only(self) -> None:
+        folder = self.bot.pokemon_confidence_review_dir
+        folder.mkdir()
+        (folder / "3_wrong.png").write_bytes(b"old")
+        (folder / "4_other.png").write_bytes(b"image")
+        (folder / "5_keep.png").write_bytes(b"keep")
+        with patch("bot.download_image", new=AsyncMock(return_value=(b"image", "image/png"))):
+            await self.bot.on_message(self.message)
+        self.assertEqual([path.name for path in folder.iterdir()], ["5_keep.png"])
+        self.assertIn("Deleted 2", self.message.reply.await_args.args[0])
 
     async def test_non_owner_and_untrusted_alert_cannot_change_references(self) -> None:
         self.message.author.id = 456
@@ -1435,6 +1449,30 @@ class ImageCorrectionTests(unittest.IsolatedAsyncioTestCase):
         await self.bot.save_recognition_review(interaction, interaction.message, "Toedscool")
         self.assertEqual([path.name for path in folder.iterdir()], ["existing.png"])
         self.assertEqual(self.bot.image_matcher.match(b"spawn image"), ("Toedscool", 0))
+
+    async def test_review_button_removes_saved_review_image(self) -> None:
+        interaction = self.review_interaction()
+        folder = self.bot.pokemon_confidence_review_dir
+        folder.mkdir()
+        (folder / "12345_pikachu.png").write_bytes(b"spawn image")
+        await bot_module.RecognitionReviewView(self.bot).yes.callback(interaction)
+        self.assertEqual(list(folder.iterdir()), [])
+        self.assertTrue((self.bot.training_data_dir / "Pikachu" / "review-12345.png").exists())
+
+    async def test_retention_and_known_cleanup_preserve_other_images(self) -> None:
+        folder = self.bot.pokemon_confidence_review_dir
+        folder.mkdir()
+        old = folder / "old.png"
+        known = folder / "known.png"
+        unknown = folder / "unknown.png"
+        old.write_bytes(b"old")
+        known.write_bytes(b"known")
+        unknown.write_bytes(b"unknown")
+        os.utime(old, (1, 1))
+        self.bot.image_matcher.corrected_references[hashlib.sha256(b"known").hexdigest()] = "Pikachu"
+        await self.bot.purge_old_review_images()
+        await self.bot.purge_known_review_images()
+        self.assertEqual([path.name for path in folder.iterdir()], ["unknown.png"])
 
     async def test_review_is_owner_only_and_surfaces_write_failure(self) -> None:
         interaction = self.review_interaction()
@@ -1610,6 +1648,18 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
             message.reply.assert_awaited_once()
             alert.assert_awaited_once_with(message, "Bellsprout", 49.99)
 
+    async def test_known_image_is_not_saved_for_review(self) -> None:
+        self.bot.image_http = Mock(close=AsyncMock())
+        image = b"known image"
+        self.bot.image_matcher.corrected_references[hashlib.sha256(image).hexdigest()] = "Pikachu"
+        with tempfile.TemporaryDirectory() as directory:
+            self.bot.pokemon_confidence_review_dir = Path(directory) / "review"
+            with patch("bot.download_image", new=AsyncMock(return_value=(image, "image/png"))):
+                await self.bot.save_flagged_pokemon_spawn_image(
+                    "https://example.test/spawn.png", "Pikachu", 123, confidence=25
+                )
+            self.assertFalse(self.bot.pokemon_confidence_review_dir.exists())
+
     @unittest.skipIf(image_match.cv2 is None, "OpenCV is not installed")
     async def test_weak_zygarde_core_spawn_is_named_and_alerted(self) -> None:
         self.bot.image_http = Mock(close=AsyncMock())
@@ -1718,13 +1768,13 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(
                 len(list(self.bot.pokemon_confidence_review_dir.glob("*.png"))),
-                1,
+                0,
             )
         message.reply.assert_awaited_once()
         self.assertIn("Pikachu: 50.00%", message.reply.await_args.args[0])
         self.assertNotIn("below 50%", message.reply.await_args.args[0])
 
-    async def test_flagged_pokemon_spawn_is_saved_even_with_high_confidence(
+    async def test_flagged_pokemon_spawn_is_not_saved_with_high_confidence(
         self,
     ) -> None:
         self.bot.image_http = Mock(close=AsyncMock())
@@ -1764,9 +1814,7 @@ class ApiStatusTests(unittest.IsolatedAsyncioTestCase):
                 await self.bot.handle_spawn(message)
 
             saved_images = list(self.bot.pokemon_confidence_review_dir.glob("*.png"))
-            self.assertEqual(len(saved_images), 1)
-            self.assertTrue(saved_images[0].name.endswith("_inteleon.png"))
-            self.assertEqual(saved_images[0].read_bytes(), b"inteleon spawn")
+            self.assertEqual(saved_images, [])
 
     def test_recognizes_only_poketwo_incense_commands(self) -> None:
         self.assertEqual(
