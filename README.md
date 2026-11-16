@@ -155,6 +155,8 @@ that Pokémon's folder under `pokemon training/training_data/`, and identical
 image bytes are recognized immediately, including after a restart. To improve
 matching for other images, rebuild and deploy the image bank as described below,
 then restart the bot. Review buttons remain usable after bot restarts.
+If the same image bytes are already in that Pokémon's folder, the review does
+not save another copy. Existing duplicates are not removed.
 Images are stored on the machine running the bot, not automatically in GitHub
 or your Codespace. Set `POKEMON_TRAINING_DIR` to use another directory; it must
 already exist. For containers, mount a persistent volume for that directory.

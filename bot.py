@@ -28,6 +28,7 @@ from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter, ImageFont
 from image_match import (
     CUSTOM_FORM_SPECIES,
     FORM_DISPLAY_NAMES,
+    IMAGE_SUFFIXES,
     ARCEUS_FORM_SET,
     base_pokemon_name,
     canonicalize_regional_name,
@@ -10720,7 +10721,7 @@ class NamingBot(commands.Bot):
                 folder.mkdir(exist_ok=True)
                 attachment = review.attachments[0]
                 extension = Path(attachment.filename).suffix.lower()
-                if extension not in {".png", ".jpg", ".jpeg", ".webp"}:
+                if extension not in IMAGE_SUFFIXES:
                     raise ValueError("Review image has an unsupported format")
                 image = await attachment.read()
                 if not image:
@@ -10728,7 +10729,15 @@ class NamingBot(commands.Bot):
                 image_path = folder / f"review-{spawn_id}{extension}"
                 if image_path.exists() and image_path.read_bytes() != image:
                     raise ValueError(f"Different image already exists at {image_path}")
-                image_path.write_bytes(image)
+                already_saved = any(
+                    path.is_file()
+                    and path.suffix.lower() in IMAGE_SUFFIXES
+                    and path.stat().st_size == len(image)
+                    and path.read_bytes() == image
+                    for path in folder.iterdir()
+                )
+                if not already_saved:
+                    image_path.write_bytes(image)
                 digest = hashlib.sha256(image).hexdigest()
                 append_image_correction(
                     self.image_corrections_path,
@@ -10755,9 +10764,14 @@ class NamingBot(commands.Bot):
                 await review.edit(view=None)
             except discord.HTTPException:
                 logger.exception("Could not disable recognition review %s", review.id)
+            status = (
+                f"**{display_pokemon_name(name)}** is already in the training folder. "
+                if already_saved
+                else f"Saved **{display_pokemon_name(name)}** to the training folder. "
+            )
             await interaction.followup.send(
-                f"Saved **{display_pokemon_name(name)}** to the training folder. "
-                "Identical images are recognized immediately; rebuild the image bank "
+                status
+                + "Identical images are recognized immediately; rebuild the image bank "
                 "to learn from this image for other spawns.",
                 ephemeral=True,
             )

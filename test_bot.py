@@ -1401,6 +1401,41 @@ class ImageCorrectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved.read_bytes(), b"spawn image")
         self.assertEqual(self.bot.image_matcher.match(b"spawn image"), ("Toedscool", 0))
 
+    async def test_review_yes_reuses_identical_image_and_teaches_correction(self) -> None:
+        interaction = self.review_interaction()
+        folder = self.bot.training_data_dir / "Pikachu"
+        folder.mkdir()
+        original = folder / "existing.jpg"
+        original.write_bytes(b"spawn image")
+        (folder / "different.png").write_bytes(b"other image")
+        await bot_module.RecognitionReviewView(self.bot).yes.callback(interaction)
+        self.assertEqual(
+            sorted(path.name for path in folder.iterdir()), ["different.png", "existing.jpg"]
+        )
+        self.assertEqual(self.bot.image_matcher.match(b"spawn image"), ("Pikachu", 0))
+        self.assertIn("already in the training folder", interaction.followup.send.await_args.args[0])
+
+    async def test_review_no_checks_only_the_correct_pokemon_folder(self) -> None:
+        interaction = self.review_interaction()
+        guessed_folder = self.bot.training_data_dir / "Pikachu"
+        guessed_folder.mkdir()
+        (guessed_folder / "existing.png").write_bytes(b"spawn image")
+        await self.bot.save_recognition_review(interaction, interaction.message, "Toedscool")
+        self.assertEqual(
+            (self.bot.training_data_dir / "Toedscool" / "review-12345.png").read_bytes(),
+            b"spawn image",
+        )
+        self.assertEqual(self.bot.image_matcher.match(b"spawn image"), ("Toedscool", 0))
+
+    async def test_review_no_reuses_identical_image_in_correct_folder(self) -> None:
+        interaction = self.review_interaction()
+        folder = self.bot.training_data_dir / "Toedscool"
+        folder.mkdir()
+        (folder / "existing.png").write_bytes(b"spawn image")
+        await self.bot.save_recognition_review(interaction, interaction.message, "Toedscool")
+        self.assertEqual([path.name for path in folder.iterdir()], ["existing.png"])
+        self.assertEqual(self.bot.image_matcher.match(b"spawn image"), ("Toedscool", 0))
+
     async def test_review_is_owner_only_and_surfaces_write_failure(self) -> None:
         interaction = self.review_interaction()
         view = bot_module.RecognitionReviewView(self.bot)
