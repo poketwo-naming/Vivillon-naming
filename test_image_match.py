@@ -60,6 +60,70 @@ class ImageMatcherTests(unittest.TestCase):
         self.assertEqual(len(hashes), 0)
         self.assertEqual(len(labels), 0)
 
+    def test_merge_bank_preserves_old_features_and_adds_new_labels(self) -> None:
+        from build_image_bank import merge_existing_bank
+
+        np = image_match.np
+        old_features = np.vstack(
+            (np.zeros((1, 128), dtype=np.uint8), np.ones((1, 128), dtype=np.uint8))
+        )
+        new_features = np.vstack(
+            (
+                np.full((1, 128), 2, dtype=np.uint8),
+                np.full((1, 128), 3, dtype=np.uint8),
+                np.full((1, 128), 4, dtype=np.uint8),
+            )
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            bank_path = Path(directory) / "existing.npz"
+            np.savez(
+                bank_path,
+                descriptors=old_features,
+                labels=np.array([0, 0], dtype=np.int32),
+                names=np.array(["Pikachu"]),
+                exact_hashes=np.array(["a" * 64]),
+                exact_labels=np.array([0], dtype=np.int32),
+            )
+            descriptors, labels, names, hashes, exact_labels = merge_existing_bank(
+                new_features,
+                np.array([0, 0, 1], dtype=np.int32),
+                ["Pikachu", "Eevee"],
+                np.array(["a" * 64, "b" * 64]),
+                np.array([1, 1], dtype=np.int32),
+                bank_path,
+            )
+
+        self.assertEqual(names, ["Pikachu", "Eevee"])
+        self.assertEqual(descriptors.shape, (3, 128))
+        np.testing.assert_array_equal(descriptors[:2], old_features)
+        np.testing.assert_array_equal(descriptors[2], np.full(128, 4, dtype=np.uint8))
+        np.testing.assert_array_equal(labels, [0, 0, 1])
+        np.testing.assert_array_equal(hashes, ["b" * 64])
+        np.testing.assert_array_equal(exact_labels, [1])
+
+    def test_bank_assembly_is_deterministic(self) -> None:
+        from build_image_bank import assemble_bank
+
+        np = image_match.np
+        names = ["Eevee", "Pikachu"]
+        first = assemble_bank(
+            names,
+            {
+                "Eevee": np.full((4, 128), 255, dtype=np.float32),
+                "Pikachu": np.zeros((4, 128), dtype=np.float32),
+            },
+        )
+        second = assemble_bank(
+            names,
+            {
+                "Eevee": np.full((4, 128), 255, dtype=np.float32),
+                "Pikachu": np.zeros((4, 128), dtype=np.float32),
+            },
+        )
+
+        np.testing.assert_array_equal(first[0], second[0])
+        np.testing.assert_array_equal(first[1], second[1])
+
     def test_shared_screenshot_species_use_lower_vote_floor(self) -> None:
         for name in (
             "White-Plumage Squawkabilly",
@@ -100,6 +164,18 @@ class ImageMatcherTests(unittest.TestCase):
             groups = reference_images(Path(directory))
 
         self.assertEqual(list(groups), ["Shaymin"])
+
+    def test_environment_contact_sheet_is_not_a_pokemon_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "env_reps.png").write_bytes(b"")
+            image_path = root / "Pikachu" / "1.png"
+            image_path.parent.mkdir()
+            image_path.write_bytes(b"")
+
+            groups = reference_images(root)
+
+        self.assertEqual(list(groups), ["Pikachu"])
 
     def test_gastrodon_east_sea_folder_uses_east_sea_form(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

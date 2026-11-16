@@ -2,14 +2,16 @@
 
 Run this where the pictures are (not on the host):
     python build_image_bank.py [pokemon_images_folder] [output_file]
+    python build_image_bank.py [pokemon_images_folder] [output_file] --merge-existing image_bank.npz
 
 Per-Pokémon results are cached in .bank_cache/, so after adding or changing a
-Pokémon only that one is recomputed.
+Pokémon only that one is recomputed. The merge option preserves existing
+features and adds labels that are new to the existing bank.
 """
 
+import argparse
 import hashlib
 import logging
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -159,6 +161,7 @@ def assemble_bank(names: list[str], per_pokemon: dict):
     owner = np.concatenate(
         [np.full(len(compact[name]), i) for i, name in enumerate(names)]
     )
+    cv2.setRNGSeed(0)
     matcher = cv2.FlannBasedMatcher(dict(algorithm=1, trees=4), dict(checks=32))
     matcher.add([everything])
     matcher.train()
@@ -191,9 +194,85 @@ def assemble_bank(names: list[str], per_pokemon: dict):
     )
 
 
+def merge_existing_bank(
+    descriptors: np.ndarray,
+    labels: np.ndarray,
+    names: list[str],
+    exact_hashes: np.ndarray,
+    exact_labels: np.ndarray,
+    existing_bank: Path,
+) -> tuple[np.ndarray, np.ndarray, list[str], np.ndarray, np.ndarray]:
+    with np.load(existing_bank) as bank:
+        old_descriptors = bank["descriptors"].copy()
+        old_labels = bank["labels"].copy()
+        old_names = bank["names"].tolist()
+        old_exact_hashes = bank["exact_hashes"].copy()
+        old_exact_labels = bank["exact_labels"].copy()
+
+    rebuilt_indices = {name: index for index, name in enumerate(names)}
+    old_names_set = set(old_names)
+    merged_names = old_names + [name for name in names if name not in old_names_set]
+    merged_name_indices = {name: index for index, name in enumerate(merged_names)}
+    feature_parts = []
+    label_parts = []
+
+    for index in range(len(old_names)):
+        features = old_descriptors[old_labels == index]
+        feature_parts.append(features)
+        label_parts.append(np.full(len(features), index, dtype=np.int32))
+
+    for name in merged_names[len(old_names) :]:
+        rebuilt_index = rebuilt_indices[name]
+        features = descriptors[labels == rebuilt_index]
+        feature_parts.append(features)
+        label_parts.append(
+            np.full(len(features), merged_name_indices[name], dtype=np.int32)
+        )
+
+    merged_descriptors = np.vstack(feature_parts)
+    merged_labels = np.concatenate(label_parts)
+
+    owners: dict[str, str | None] = {}
+    for bank_names, hashes, indices in (
+        (old_names, old_exact_hashes, old_exact_labels),
+        (names, exact_hashes, exact_labels),
+    ):
+        for digest, index in zip(hashes.tolist(), indices.tolist()):
+            name = bank_names[int(index)]
+            if digest not in owners:
+                owners[digest] = name
+            elif owners[digest] != name:
+                owners[digest] = None
+
+    valid_exact_references = sorted(
+        (digest, name) for digest, name in owners.items() if name is not None
+    )
+    merged_hashes = [digest for digest, _ in valid_exact_references]
+    return (
+        merged_descriptors,
+        merged_labels,
+        merged_names,
+        np.array(merged_hashes, dtype="U64"),
+        np.array(
+            [merged_name_indices[name] for _, name in valid_exact_references],
+            dtype=np.int32,
+        ),
+    )
+
+
 def main() -> None:
-    folder = Path(sys.argv[1] if len(sys.argv) > 1 else "pokemon_images")
-    output = Path(sys.argv[2] if len(sys.argv) > 2 else BANK_FILE)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("folder", nargs="?", default="pokemon_images")
+    parser.add_argument("output", nargs="?", default=BANK_FILE)
+    parser.add_argument(
+        "--merge-existing",
+        type=Path,
+        metavar="BANK",
+        help="preserve BANK's features and add only newly encountered Pokémon labels",
+    )
+    args = parser.parse_args()
+    folder = Path(args.folder)
+    output = Path(args.output)
     cache = Path(".bank_cache")
     cache.mkdir(exist_ok=True)
 
@@ -221,6 +300,15 @@ def main() -> None:
 
     descriptors, labels = assemble_bank(names, per_pokemon)
     exact_hashes, exact_labels = exact_reference_index(groups, names)
+    if args.merge_existing is not None:
+        descriptors, labels, names, exact_hashes, exact_labels = merge_existing_bank(
+            descriptors,
+            labels,
+            names,
+            exact_hashes,
+            exact_labels,
+            args.merge_existing,
+        )
     np.savez_compressed(
         output,
         descriptors=descriptors,

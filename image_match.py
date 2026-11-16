@@ -447,6 +447,8 @@ def reference_images(folder: Path) -> dict[str, list[Path]]:
     for path in sorted(folder.rglob("*")):
         if path.suffix.lower() not in IMAGE_SUFFIXES or path.name.startswith("."):
             continue
+        if path.parent == folder and path.name.casefold() == "env_reps.png":
+            continue
         raw_name = path.parent.name if path.parent != folder else pokemon_name_from_file(path)
         variant = VARIANT_PATTERN.match(raw_name)
         if variant:
