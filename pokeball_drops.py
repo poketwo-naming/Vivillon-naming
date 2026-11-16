@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+import aiohttp
 import discord
 
 logger = logging.getLogger("vivillon_naming")
@@ -225,8 +226,9 @@ class PokeballDrops:
                         ),
                     )
                     view.start_expiry()
-                except (discord.HTTPException, OSError):
+                except (discord.HTTPException, aiohttp.ClientError, OSError):
                     logger.exception("Could not send Pokéball drop in channel %s", channel.id)
+                    view.stop()
                     continue
                 await self.log_drop(guild, channel, view.message)
         finally:
@@ -253,7 +255,7 @@ class PokeballDrops:
                 view=view,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
-        except discord.HTTPException:
+        except (discord.HTTPException, aiohttp.ClientError):
             logger.exception("Could not send Pokéball drop log to channel %s", channel_id)
 
     async def configure_log(self, message: discord.Message) -> None:
@@ -603,7 +605,7 @@ class PokeballView(discord.ui.View):
                         await self.message.edit(content="This Pokéball expired.", view=self)
                 except discord.NotFound:
                     pass
-                except discord.HTTPException:
+                except (discord.HTTPException, aiohttp.ClientError):
                     logger.warning("Could not disable expired Pokéball button", exc_info=True)
             self.stop()
 

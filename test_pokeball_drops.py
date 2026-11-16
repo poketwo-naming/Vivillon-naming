@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
+import aiohttp
 import discord
 
 from bot import PROFILE_DEFAULTS, PROFILE_STAT_DEFAULTS, render_profile_image, save_profile_inventory
@@ -167,6 +168,16 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         award.assert_not_called()
         self.assertIn("expired", interaction.response.send_message.await_args.args[0])
 
+    async def test_expiry_handles_disconnected_discord(self) -> None:
+        view = PokeballView(self.drops)
+        view.deadline = 0
+        view.message = Mock()
+        view.message.edit = AsyncMock(side_effect=aiohttp.ServerDisconnectedError())
+        with self.assertLogs("vivillon_naming", level="WARNING"):
+            await view.expire()
+        self.assertTrue(view.is_finished())
+        self.assertTrue(view.open_ball.disabled)
+
     async def test_timer_sends_to_configured_accessible_text_channel(self) -> None:
         guild = Mock()
         guild.id = 7
@@ -206,6 +217,42 @@ class PokeballTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(drop_args["view"], PokeballView)
         log_channel.send.assert_awaited_once()
         self.assertEqual(log_channel.send.await_args.kwargs["view"].children[0].url, drop.jump_url)
+
+    async def test_timer_continues_after_drop_and_log_disconnects(self) -> None:
+        guild = Mock()
+        guild.id = 7
+        guild.me = Mock()
+        channel = Mock()
+        channel.id = 8
+        channel.category_id = 9
+        drop = Mock()
+        drop.jump_url = "https://discord.com/channels/7/8/99"
+        drop.created_at = discord.utils.utcnow()
+        channel.send = AsyncMock(side_effect=[aiohttp.ServerDisconnectedError(), drop, drop])
+        log_channel = Mock(spec=discord.TextChannel)
+        log_channel.send = AsyncMock(side_effect=[aiohttp.ServerDisconnectedError(), None])
+        guild.get_channel.return_value = log_channel
+        permissions = channel.permissions_for.return_value
+        permissions.view_channel = permissions.send_messages = True
+        permissions.attach_files = permissions.embed_links = True
+        guild.text_channels = [channel]
+        self.bot.get_guild.return_value = guild
+        self.drops.data["categories"]["7"] = [9]
+        self.drops.data["log_channels"]["7"] = 55
+        self.drops.last_spawn[7] = time.monotonic()
+        with (
+            patch("pokeball_drops.asyncio.sleep", new=AsyncMock(side_effect=[
+                None, None, None, asyncio.CancelledError
+            ])),
+            patch.object(PokeballView, "start_expiry"),
+            self.assertLogs("vivillon_naming", level="ERROR") as logs,
+        ):
+            with self.assertRaises(asyncio.CancelledError):
+                await self.drops.run_guild(7)
+        self.assertEqual(channel.send.await_count, 3)
+        self.assertEqual(log_channel.send.await_count, 2)
+        self.assertIn("Could not send Pokéball drop in channel 8", logs.output[0])
+        self.assertIn("Could not send Pokéball drop log", logs.output[1])
 
     async def test_invalid_dye_rarity_rejected(self) -> None:
         (self.root / "dyes.json").write_text(json.dumps({"dyes": [
