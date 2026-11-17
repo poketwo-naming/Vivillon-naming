@@ -6775,7 +6775,7 @@ def render_profile_image(
             frame = colored
             if frame_dye["rarity"] == "glow":
                 glow = Image.new("RGBA", frame.size, dye_glow_color(frame_dye))
-                glow.putalpha(alpha.filter(ImageFilter.GaussianBlur(16)).point(lambda value: min(255, int(value) * 3 // 4)))
+                glow.putalpha(alpha.filter(ImageFilter.GaussianBlur(16)).point(lambda value: min(255, cast(int, value) * 3 // 4)))
                 glow.alpha_composite(frame)
                 frame = glow
         framed_image = Image.new("RGBA", frame.size, (0, 0, 0, 0))
