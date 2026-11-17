@@ -954,6 +954,18 @@ def image_url(message: discord.Message) -> str | None:
 
 LOW_ACCURACY_THRESHOLD = 50
 CORROBORATED_CONFIDENCE_FLOOR = 85.0
+
+
+class ImageCorrectionRow(TypedDict):
+    image_sha256: str
+    correct_name: str
+    source_message_id: str
+    previous_guess: str
+    previous_confidence: str
+    corrected_by: str
+    alert_message_id: str
+
+
 CORRECTION_FIELDS = (
     "image_sha256",
     "correct_name",
@@ -989,7 +1001,7 @@ def append_image_correction(path: Path, row: dict[str, str]) -> None:
         writer = csv.DictWriter(file, fieldnames=CORRECTION_FIELDS)
         if file.tell() == 0:
             writer.writeheader()
-        writer.writerow(row)
+        writer.writerow(row)  # type: ignore[arg-type]
 
 
 def append_pokemon_confidence(path: Path, name: str, confidence: float) -> None:
@@ -6398,7 +6410,7 @@ def add_dye_sparkles(
     width, height = image.size
     for _ in range(count * 4):
         x, y = rng.randrange(width), rng.randrange(height)
-        if mask is not None and mask.getpixel((x, y)) < 200:
+        if mask is not None and mask.getpixel((x, y)) < 200:  # type: ignore[operator]
             continue
         reach = rng.choice((2, 3, 4))
         draw.line((x - reach, y, x + reach, y), fill=(255, 255, 255, 255))
@@ -7493,7 +7505,11 @@ class RecognitionReviewView(discord.ui.View):
         if not embed.fields:
             await interaction.response.send_message("This review is unavailable.", ephemeral=True)
             return
-        await self.bot.save_recognition_review(interaction, interaction.message, embed.fields[0].value)
+        raw_name = embed.fields[0].value
+        if raw_name is None:
+            await interaction.response.send_message("This review is unavailable.", ephemeral=True)
+            return
+        await self.bot.save_recognition_review(interaction, interaction.message, raw_name)
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger, custom_id="recognition-review:no")
     async def no(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -8934,7 +8950,7 @@ class NamingBot(commands.Bot):
                     return human_id(user)
         if source is not None:
             inner = getattr(getattr(source, "reference", None), "resolved", None)
-            if human_id(getattr(inner, "author", None)) is not None:
+            if inner is not None and human_id(getattr(inner, "author", None)) is not None:
                 return human_id(inner.author)
             for user in getattr(source, "mentions", None) or []:
                 if human_id(user) is not None:
@@ -8981,7 +8997,7 @@ class NamingBot(commands.Bot):
                     and callable(fetch_message)
                 ):
                     try:
-                        source = await fetch_message(source_message_id)
+                        source = await fetch_message(source_message_id)  # type: ignore[misc]
                     except discord.HTTPException:
                         logger.exception(
                             "Could not resolve the user for bingo message %s",
@@ -10919,12 +10935,12 @@ class NamingBot(commands.Bot):
                 digest = hashlib.sha256(image).hexdigest()
                 append_image_correction(
                     self.image_corrections_path,
-                    {
+                    {  # type: ignore[typeddict-item]
                         "image_sha256": digest,
                         "correct_name": name,
                         "source_message_id": spawn_id,
-                        "previous_guess": embed.fields[0].value,
-                        "previous_confidence": embed.fields[1].value.removesuffix("%"),
+                        "previous_guess": embed.fields[0].value or "",
+                        "previous_confidence": (embed.fields[1].value or "").removesuffix("%"),
                         "corrected_by": str(interaction.user.id),
                         "alert_message_id": str(review.id),
                     },
