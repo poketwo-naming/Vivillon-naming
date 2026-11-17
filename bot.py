@@ -6399,7 +6399,7 @@ def dye_glow_color(dye: dict[str, str]) -> tuple[int, int, int]:
     first, second = (
         ImageColor.getrgb(dye.get(key, dye["color"])) for key in ("color", "color2")
     )
-    return tuple((a + b) // 2 for a, b in zip(first, second))
+    return cast(tuple[int, int, int], tuple((a + b) // 2 for a, b in zip(first, second)))
 
 
 def add_dye_sparkles(
@@ -6775,7 +6775,7 @@ def render_profile_image(
             frame = colored
             if frame_dye["rarity"] == "glow":
                 glow = Image.new("RGBA", frame.size, dye_glow_color(frame_dye))
-                glow.putalpha(alpha.filter(ImageFilter.GaussianBlur(16)).point(lambda value: min(255, value * 3 // 4)))
+                glow.putalpha(alpha.filter(ImageFilter.GaussianBlur(16)).point(lambda value: min(255, int(value) * 3 // 4)))
                 glow.alpha_composite(frame)
                 frame = glow
         framed_image = Image.new("RGBA", frame.size, (0, 0, 0, 0))
