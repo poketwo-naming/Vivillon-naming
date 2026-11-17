@@ -142,7 +142,7 @@ def build_candidates(
 ) -> list[Candidate]:
     candidates: list[Candidate] = []
     for code, (name, gender, iv, shiny) in entries.items():
-        if shiny and not include_shiny:
+        if shiny != include_shiny:
             continue
         groups = egg_groups_for(name)
         if not groups or UNDISCOVERED in groups:
